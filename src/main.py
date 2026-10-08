@@ -141,7 +141,7 @@ def ler_planilha(caminho):
 
     ws = wb.active
 
-    dados = []
+    registros = {}
 
     for linha in ws.iter_rows(
         min_row=2,
@@ -153,17 +153,26 @@ def ler_planilha(caminho):
         if not matricula or not data_inicial or not data_final:
             continue
 
-        anos = list(
-            range(
-                data_inicial.year,
-                data_final.year + 1
-            )
+        matricula = str(matricula)
+
+        anos = range(
+            data_inicial.year,
+            data_final.year + 1
         )
+
+        if matricula not in registros:
+            registros[matricula] = set()
+
+        registros[matricula].update(anos)
+
+    dados = []
+
+    for matricula, anos in registros.items():
 
         dados.append(
             (
-                str(matricula),
-                anos
+                matricula,
+                sorted(anos)
             )
         )
 
@@ -571,38 +580,45 @@ def verificar_print():
 
         try:
 
-            hwnd_encontrado = None
+            encontrado = []
 
             def procurar_janela(hwnd, _):
-
-                nonlocal hwnd_encontrado
 
                 if not win32gui.IsWindowVisible(hwnd):
                     return
 
                 titulo = win32gui.GetWindowText(hwnd).strip()
+                classe = win32gui.GetClassName(hwnd)
 
-                if titulo == "Print":
-                    hwnd_encontrado = hwnd
+                if titulo:
+                    print(
+                        f"[JANELA] HWND={hwnd} | "
+                        f"Classe={classe} | "
+                        f"Título={titulo}"
+                    )
+
+                if titulo.lower() == "print":
+
+                    encontrado.append(hwnd)
 
             win32gui.EnumWindows(
                 procurar_janela,
                 None
             )
 
-            if hwnd_encontrado:
+            if encontrado:
+
+                hwnd = encontrado[0]
 
                 print()
                 print("JANELA PRINT ENCONTRADA")
-                print(
-                    f"Handle : {hwnd_encontrado}"
-                )
-                print(
-                    f"Título : "
-                    f"{win32gui.GetWindowText(hwnd_encontrado)}"
-                )
+                print("-" * 80)
+                print(f"Handle : {hwnd}")
+                print(f"Classe : {win32gui.GetClassName(hwnd)}")
+                print(f"Título : {win32gui.GetWindowText(hwnd)}")
+                print("-" * 80)
 
-                return True
+                return hwnd
 
         except Exception as e:
 
@@ -610,42 +626,45 @@ def verificar_print():
                 f"Erro ao verificar janela Print: {e}"
             )
 
-        time.sleep(.2)
+        time.sleep(0.2)
 
     print()
-    print(
-        "ERRO: janela Print não foi encontrada."
-    )
+    print("ERRO: janela Print não foi encontrada.")
 
-    return False
+    return None
 
 
 # ============================================================
 # AVANÇA NA JANELA PRINT
 # ============================================================
 
-def avancar_print():
-
-    if not verificar_print():
-        return False
+def avancar_print(hwnd_print):
 
     print()
-    print("Janela Print confirmada.")
+    print("JANELA PRINT CONFIRMADA.")
+    print(f"Handle: {hwnd_print}")
     print("Procurando botão OK...")
 
     try:
+
         desktop = Desktop(backend="win32")
 
         janela_print = desktop.window(
-            class_name="#32770",
-            title="Print"
+            handle=hwnd_print
         )
 
         if not janela_print.exists(timeout=3):
-            print("ERRO: Janela Print não encontrada.")
+
+            print(
+                "ERRO: Janela Print não encontrada."
+            )
+
             return False
 
-        print(f"Janela Print encontrada. Handle: {janela_print.handle}")
+        print(
+            f"Janela Print encontrada. "
+            f"Handle: {janela_print.handle}"
+        )
 
         botao_ok = janela_print.child_window(
             title="OK",
@@ -653,7 +672,11 @@ def avancar_print():
         )
 
         if not botao_ok.exists(timeout=3):
-            print("ERRO: Botão OK não encontrado.")
+
+            print(
+                "ERRO: Botão OK não encontrado."
+            )
+
             return False
 
         rect = botao_ok.rectangle()
@@ -661,29 +684,34 @@ def avancar_print():
         x = (rect.left + rect.right) // 2
         y = (rect.top + rect.bottom) // 2
 
+        print()
         print("BOTÃO OK ENCONTRADO")
         print(f"Handle : {botao_ok.handle}")
         print(f"Rect   : {rect}")
         print(f"Centro : X={x}, Y={y}")
 
-        # ----------------------------------------------------
-        # TRAZ A JANELA PRINT PARA FRENTE
-        # ----------------------------------------------------
+        # ====================================================
+        # ATIVA A JANELA
+        # ====================================================
 
         print("Ativando janela Print...")
 
         try:
             janela_print.set_focus()
         except Exception as e:
-            print(f"Aviso ao ativar janela: {e}")
+            print(
+                f"Aviso ao ativar janela: {e}"
+            )
 
         time.sleep(0.5)
 
-        # ----------------------------------------------------
-        # MOVE O MOUSE ATÉ O BOTÃO
-        # ----------------------------------------------------
+        # ====================================================
+        # MOVE O MOUSE
+        # ====================================================
 
-        print("Movendo mouse até o botão OK...")
+        print(
+            "Movendo mouse até o botão OK..."
+        )
 
         pyautogui.moveTo(
             x,
@@ -691,13 +719,18 @@ def avancar_print():
             duration=0.02
         )
 
-        time.sleep(0.05)
+        time.sleep(0.2)
 
-        # ----------------------------------------------------
-        # DUPLO CLIQUE
-        # ----------------------------------------------------
+        # ====================================================
+        # CONFIRMA CLIQUE
+        # ====================================================
 
-        print("Executando DUPLO CLIQUE no OK...")
+        print()
+        print("CONFIRMAÇÃO: botão OK localizado.")
+        print(
+            f"Executando clique em "
+            f"X={x}, Y={y}..."
+        )
 
         pyautogui.doubleClick(
             x,
@@ -705,21 +738,32 @@ def avancar_print():
             interval=0.15
         )
 
-        print("Duplo clique enviado.")
+        print(
+            "Duplo clique enviado."
+        )
 
-        # ----------------------------------------------------
-        # VERIFICA SE A JANELA FECHOU
-        # ----------------------------------------------------
+        # ====================================================
+        # AGUARDA SALVAR
+        # ====================================================
 
-        print("Aguardando janela Salvar impressão...")
+        print()
+        print(
+            "Aguardando janela "
+            "'Salvar Saída de Impressão como'..."
+        )
 
         if verificar_salvar_impressao():
-            print("Salvar impressão confirmada.")
+
+            print(
+                "Salvar impressão confirmada."
+            )
+
             return salvar_temporario()
 
+        print()
         print(
-            "ERRO: Salvar impressão não apareceu "
-            "após clicar em OK."
+            "ERRO: janela de salvamento "
+            "não apareceu após clicar em OK."
         )
 
         return False
@@ -797,6 +841,7 @@ def verificar_salvar_impressao():
 # ============================================================
 
 def tratar_saida_impressao():
+
     print()
     print("=" * 80)
     print("AGUARDANDO SAÍDA DE IMPRESSÃO")
@@ -804,53 +849,155 @@ def tratar_saida_impressao():
 
     limite = time.time() + 15
 
+    print_clicado = False
+
     while time.time() < limite:
-        try:
-            janelas = Desktop(backend="win32").windows()
 
-            for janela in janelas:
+        # ============================================================
+        # 1. PRINT
+        # ============================================================
+
+        if not print_clicado:
+
+            hwnd_print = verificar_print()
+
+            if hwnd_print:
+
+                print()
+                print("PRINT DETECTADO.")
+                print("Localizando botão OK...")
+
                 try:
-                    if not janela.is_visible():
-                        continue
+                    desktop = Desktop(backend="win32")
 
-                    titulo = janela.window_text()
+                    janela_print = desktop.window(
+                        handle=hwnd_print
+                    )
 
-                    if (
-                        titulo.startswith("Report Designer - fichafin.frx")
-                        and janela.class_name() == "folha7c000000"
-                    ):
-                        print()
-                        print("REPORT DESIGNER ENCONTRADO.")
-                        print("Executando clique em Print Preview...")
+                    botao_ok = janela_print.child_window(
+                        title="OK",
+                        class_name="Button"
+                    )
 
-                        # ==================================================
-                        # CLIQUE DIRETO NO PRINT PREVIEW
-                        # ==================================================
+                    if not botao_ok.exists(timeout=3):
+                        print("ERRO: botão OK não encontrado.")
+                        return False
 
-                        pyautogui.doubleClick(
-                            373,
-                            325,
-                            interval=0.15
-                        )
+                    rect = botao_ok.rectangle()
 
-                        print("Print Preview duplo clicado.")
+                    x = (rect.left + rect.right) // 2
+                    y = (rect.top + rect.bottom) // 2
 
-                        if verificar_salvar_impressao():
-                            print("Salvar impressão confirmada.")
-                            return salvar_temporario()
-                        
-                        return aguardar_print_e_tab()
+                    print()
+                    print("BOTÃO OK ENCONTRADO")
+                    print("-" * 80)
+                    print(f"X: {x}")
+                    print(f"Y: {y}")
+                    print("-" * 80)
 
-                except Exception:
-                    pass
+                    print("Movendo mouse até o botão OK...")
+
+                    pyautogui.moveTo(
+                        x,
+                        y,
+                        duration=0.2
+                    )
+
+                    time.sleep(0.3)
+
+                    print("CLICANDO NO BOTÃO OK...")
+
+                    pyautogui.click(
+                        x,
+                        y
+                    )
+
+                    print("OK CLICADO.")
+
+                    print_clicado = True
+
+                    time.sleep(1)
+
+                except Exception as e:
+
+                    print(
+                        f"Erro ao clicar no OK da janela Print: {e}"
+                    )
+
+                    return False
+
+        # ============================================================
+        # 2. SALVAR SAÍDA DE IMPRESSÃO COMO
+        # ============================================================
+
+        try:
+
+            janela_salvar = win32gui.FindWindow(
+                None,
+                "Salvar Saída de Impressão como"
+            )
+
+            if janela_salvar:
+
+                print()
+                print("JANELA DE SALVAMENTO ENCONTRADA.")
+
+                return salvar_temporario()
 
         except Exception as e:
-            print(f"Erro procurando Report Designer: {e}")
 
-        time.sleep(0.2)
+            print(
+                f"Erro procurando janela de salvamento: {e}"
+            )
+
+        # ============================================================
+        # 3. REPORT DESIGNER
+        # ============================================================
+
+        try:
+
+            hwnd_report = None
+
+            def procurar_report(hwnd, _):
+
+                nonlocal hwnd_report
+
+                if not win32gui.IsWindowVisible(hwnd):
+                    return
+
+                titulo = win32gui.GetWindowText(hwnd)
+
+                if "Report Designer" in titulo:
+
+                    hwnd_report = hwnd
+
+            win32gui.EnumWindows(
+                procurar_report,
+                None
+            )
+
+            if hwnd_report:
+                pyautogui.doubleClick(
+                    373,
+                    325,
+                    interval=0.1
+                )
+
+                time.sleep(1)
+
+        except Exception as e:
+
+            print(
+                f"Erro procurando Report Designer: {e}"
+            )
+
+        time.sleep(0.3)
 
     print()
-    print("ERRO: Report Designer não foi encontrado.")
+    print("=" * 80)
+    print("ERRO: nenhuma janela de impressão foi encontrada.")
+    print("=" * 80)
+
     return False
 
 
@@ -1544,6 +1691,22 @@ def avancar_para_proximo_ano():
     return True
 
 
+def preparar_proxima_matricula():
+    print()
+    print("=" * 80)
+    print("PREPARANDO PRÓXIMA MATRÍCULA")
+    print("=" * 80)
+
+    time.sleep(0.5)
+
+    # sequência para retornar ao campo inicial
+    pyautogui.press("tab", presses=3, interval=0.3)
+
+    print("Pronto para a próxima matrícula.")
+
+    return True
+
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -1551,46 +1714,46 @@ def avancar_para_proximo_ano():
 def main():
 
     if len(sys.argv) != 2:
-
         print(
             'Uso: python src/main.py "planilha.xlsx"'
         )
-
         return
 
-    planilha = Path(
-        sys.argv[1]
-    )
+    planilha = Path(sys.argv[1])
 
-    dados = ler_planilha(
-        planilha
-    )
+    dados = ler_planilha(planilha)
 
     if not dados:
-
         print(
             "Nenhum registro encontrado."
         )
-
         return
 
-    matricula, anos = dados[0]
+    print()
+    print("=" * 80)
+    print("REGISTROS ENCONTRADOS")
+    print("=" * 80)
 
-    ano = anos[0]
+    for matricula, anos in dados:
+        print(
+            f"Matrícula: {matricula} | "
+            f"Anos: {anos[0]} até {anos[-1]}"
+        )
 
-    print(
-        f"Matrícula: {matricula}"
-    )
-
-    print(
-        f"Ano: {ano}"
-    )
+    # ========================================================
+    # IMPRESSORA
+    # ========================================================
 
     impressora = win32print.GetDefaultPrinter()
 
     if impressora.strip().lower() == "microsoft print to pdf":
-        print("Impressora padrão já é Microsoft Print to PDF.")
+
+        print(
+            "Impressora padrão já é Microsoft Print to PDF."
+        )
+
     else:
+
         definir_impressora_pdf()
 
         print("IMPRESSORA PADRÃO:")
@@ -1598,39 +1761,169 @@ def main():
 
         time.sleep(1)
 
-    login()
+    # ========================================================
+    # LOGIN
+    # ========================================================
 
-    gerarFicha(
-        matricula,
-        ano
-    )
+    if not login():
+        print("ERRO: login não concluído.")
+        return
 
-    if tratar_saida_impressao():
+    # ========================================================
+    # CICLO DE MATRÍCULAS
+    # ========================================================
 
-        print("=" * 80)
-        print("SAÍDA DE IMPRESSÃO CONCLUÍDA")
-        print("=" * 80)
-
-        if organizar_pdf_temporario():
-
-            print()
-            print("PDF ORGANIZADO COM SUCESSO.")
-
-            # Volta para o campo correto para continuar o ciclo
-            avancar_para_proximo_ano()
-
-        else:
-
-            print()
-            print("ERRO AO ORGANIZAR O PDF.")
-            return
-
-    else:
+    for indice_matricula, (matricula, anos) in enumerate(
+        dados,
+        start=1
+    ):
 
         print()
         print("=" * 80)
-        print("ERRO AO GERAR A SAÍDA DE IMPRESSÃO")
+        print(
+            f"MATRÍCULA {indice_matricula}/{len(dados)}"
+        )
         print("=" * 80)
+
+        print(
+            f"Matrícula: {matricula}"
+        )
+
+        print(
+            f"Anos: {anos[0]} até {anos[-1]}"
+        )
+
+        # ====================================================
+        # CICLO DE ANOS
+        # ====================================================
+
+        for indice_ano, ano in enumerate(
+            anos,
+            start=1
+        ):
+
+            print()
+            print("=" * 80)
+            print(
+                f"PROCESSANDO ANO "
+                f"{indice_ano}/{len(anos)}"
+            )
+            print("=" * 80)
+
+            print(
+                f"Matrícula: {matricula}"
+            )
+
+            print(
+                f"Ano: {ano}"
+            )
+
+            # ------------------------------------------------
+            # GERA FICHA
+            # ------------------------------------------------
+
+            gerarFicha(
+                matricula,
+                ano
+            )
+
+            # ------------------------------------------------
+            # TRATA SAÍDA DE IMPRESSÃO
+            # ------------------------------------------------
+
+            if not tratar_saida_impressao():
+
+                print()
+                print("=" * 80)
+                print(
+                    "ERRO AO GERAR A SAÍDA DE IMPRESSÃO"
+                )
+                print("=" * 80)
+
+                return
+
+            print()
+            print("=" * 80)
+            print(
+                "SAÍDA DE IMPRESSÃO CONCLUÍDA"
+            )
+            print("=" * 80)
+
+            # ------------------------------------------------
+            # ORGANIZA PDF
+            # ------------------------------------------------
+
+            if not organizar_pdf_temporario():
+
+                print()
+                print("=" * 80)
+                print(
+                    "ERRO AO ORGANIZAR O PDF"
+                )
+                print("=" * 80)
+
+                return
+
+            print()
+            print(
+                "PDF ORGANIZADO COM SUCESSO."
+            )
+
+            # ------------------------------------------------
+            # PRÓXIMO ANO
+            # ------------------------------------------------
+
+            if indice_ano < len(anos):
+
+                avancar_para_proximo_ano()
+
+            else:
+
+                if indice_ano < len(anos):
+
+                    avancar_para_proximo_ano()
+
+                else:
+
+                    print()
+                    print("=" * 80)
+                    print(
+                        "TODOS OS ANOS DA MATRÍCULA "
+                        "FORAM PROCESSADOS."
+                    )
+                    print("=" * 80)
+
+                    if indice_matricula < len(dados):
+
+                        preparar_proxima_matricula()
+
+        # ====================================================
+        # PRÓXIMA MATRÍCULA
+        # ====================================================
+
+        if indice_matricula < len(dados):
+
+            print()
+            print("=" * 80)
+            print(
+                "AVANÇANDO PARA A PRÓXIMA MATRÍCULA"
+            )
+            print("=" * 80)
+
+            # Aqui colocaremos a sequência necessária
+            # para voltar/preparar os campos da próxima
+            # matrícula.
+
+            time.sleep(1)
+
+    # ========================================================
+    # FINAL
+    # ========================================================
+
+    print()
+    print("=" * 80)
+    print("PROCESSAMENTO CONCLUÍDO")
+    print("=" * 80)
     
 
 if __name__ == "__main__":
