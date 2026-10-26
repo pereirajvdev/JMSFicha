@@ -14,8 +14,6 @@ from pywinauto import Desktop
 from openpyxl import load_workbook
 
 
-EXE = Path(r"C:\Folha\folha.exe")
-
 CRED = Path("data/credencial.txt")
 
 
@@ -35,6 +33,9 @@ PASTA_SERVIDORES = Path(
 )
 
 NOME_TEMPORARIO = "temporario.pdf"
+
+TEMPO_LIMITE = 60
+INTERVALO_VERIFICACAO = 1
 
 # ============================================================
 # LOGIN
@@ -75,7 +76,7 @@ def login():
 
     pyautogui.write(
         usuario,
-        interval=.05
+        interval=.002
     )
 
     pyautogui.press("tab")
@@ -83,14 +84,14 @@ def login():
 
     pyautogui.write(
         senha,
-        interval=.05
+        interval=.002
     )
 
     pyautogui.press("tab")
     time.sleep(.02)
 
     pyautogui.press("enter")
-    time.sleep(.4)
+    time.sleep(.5)
 
     pyautogui.hotkey("alt")
     time.sleep(.02)
@@ -120,8 +121,51 @@ def login():
     pyautogui.press("enter")
     time.sleep(.02)
 
-    pyautogui.hotkey("win", "left")
-    time.sleep(.02)
+    # Localiza e ativa a janela Folha - PREF...
+    print("Procurando janela Folha - PREF...")
+
+    desktop = Desktop(backend="win32")
+    janela_folha = None
+    limite = time.time() + 10
+
+    while time.time() < limite:
+        for janela in desktop.windows():
+            try:
+                titulo = janela.window_text().strip()
+
+                if (
+                    janela.is_visible()
+                    and titulo.startswith("Folha - PREF")
+                ):
+                    janela_folha = janela
+                    break
+
+            except Exception:
+                continue
+
+        if janela_folha:
+            break
+
+        time.sleep(.02)
+
+    if janela_folha:
+        try:
+            janela_folha.set_focus()
+            time.sleep(.02)
+
+            print(
+                f"Foco definido: "
+                f"{janela_folha.window_text()}"
+            )
+
+        except Exception as e:
+            print(f"Erro ao definir foco: {e}")
+
+    else:
+        print(
+            "ERRO: janela Folha - PREF... "
+            "não encontrada após 10 segundos."
+        )
 
     print("Login concluído.")
 
@@ -525,7 +569,7 @@ def gerarFicha(matricula, ano):
 
     pyautogui.write(
         str(ano),
-        interval=.05
+        interval=.001
     )
 
     pyautogui.press("tab")
@@ -533,7 +577,7 @@ def gerarFicha(matricula, ano):
 
     pyautogui.write(
         matricula,
-        interval=.05
+        interval=.001
     )
 
     pyautogui.press("tab")
@@ -541,7 +585,7 @@ def gerarFicha(matricula, ano):
 
     pyautogui.write(
         matricula,
-        interval=.05
+        interval=.001
     )
 
     time.sleep(.02)
@@ -569,67 +613,44 @@ def gerarFicha(matricula, ano):
 
 def verificar_print():
 
-    print()
-    print("=" * 80)
-    print("VERIFICANDO JANELA PRINT")
-    print("=" * 80)
+    try:
 
-    limite = time.time() + 10
+        hwnd_print = None
 
-    while time.time() < limite:
+        def procurar_janela(hwnd, _):
 
-        try:
+            nonlocal hwnd_print
 
-            encontrado = []
+            if not win32gui.IsWindowVisible(hwnd):
+                return
 
-            def procurar_janela(hwnd, _):
+            titulo = win32gui.GetWindowText(hwnd).strip()
 
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
+            if titulo.lower() == "print":
+                hwnd_print = hwnd
 
-                titulo = win32gui.GetWindowText(hwnd).strip()
-                classe = win32gui.GetClassName(hwnd)
+        win32gui.EnumWindows(
+            procurar_janela,
+            None
+        )
 
-                if titulo:
-                    print(
-                        f"[JANELA] HWND={hwnd} | "
-                        f"Classe={classe} | "
-                        f"Título={titulo}"
-                    )
+        if hwnd_print:
 
-                if titulo.lower() == "print":
+            print()
+            print("JANELA PRINT ENCONTRADA")
+            print("-" * 80)
+            print(f"Handle : {hwnd_print}")
+            print(f"Classe : {win32gui.GetClassName(hwnd_print)}")
+            print(f"Título : {win32gui.GetWindowText(hwnd_print)}")
+            print("-" * 80)
 
-                    encontrado.append(hwnd)
+            return hwnd_print
 
-            win32gui.EnumWindows(
-                procurar_janela,
-                None
-            )
+    except Exception as e:
 
-            if encontrado:
-
-                hwnd = encontrado[0]
-
-                print()
-                print("JANELA PRINT ENCONTRADA")
-                print("-" * 80)
-                print(f"Handle : {hwnd}")
-                print(f"Classe : {win32gui.GetClassName(hwnd)}")
-                print(f"Título : {win32gui.GetWindowText(hwnd)}")
-                print("-" * 80)
-
-                return hwnd
-
-        except Exception as e:
-
-            print(
-                f"Erro ao verificar janela Print: {e}"
-            )
-
-        time.sleep(0.2)
-
-    print()
-    print("ERRO: janela Print não foi encontrada.")
+        print(
+            f"Erro ao verificar janela Print: {e}"
+        )
 
     return None
 
@@ -716,7 +737,7 @@ def avancar_print(hwnd_print):
         pyautogui.moveTo(
             x,
             y,
-            duration=0.02
+            duration=.02
         )
 
         time.sleep(0.2)
@@ -868,7 +889,10 @@ def tratar_saida_impressao():
                 print("Localizando botão OK...")
 
                 try:
-                    desktop = Desktop(backend="win32")
+
+                    desktop = Desktop(
+                        backend="win32"
+                    )
 
                     janela_print = desktop.window(
                         handle=hwnd_print
@@ -879,14 +903,25 @@ def tratar_saida_impressao():
                         class_name="Button"
                     )
 
-                    if not botao_ok.exists(timeout=3):
-                        print("ERRO: botão OK não encontrado.")
+                    if not botao_ok.exists(timeout=1):
+
+                        print(
+                            "ERRO: botão OK não encontrado."
+                        )
+
                         return False
 
                     rect = botao_ok.rectangle()
 
-                    x = (rect.left + rect.right) // 2
-                    y = (rect.top + rect.bottom) // 2
+                    x = (
+                        rect.left +
+                        rect.right
+                    ) // 2
+
+                    y = (
+                        rect.top +
+                        rect.bottom
+                    ) // 2
 
                     print()
                     print("BOTÃO OK ENCONTRADO")
@@ -895,33 +930,38 @@ def tratar_saida_impressao():
                     print(f"Y: {y}")
                     print("-" * 80)
 
-                    print("Movendo mouse até o botão OK...")
+                    print(
+                        "Movendo mouse até o botão OK..."
+                    )
 
                     pyautogui.moveTo(
                         x,
                         y,
-                        duration=0.2
+                        duration=0.05
                     )
 
-                    time.sleep(0.3)
+                    time.sleep(0.1)
 
-                    print("CLICANDO NO BOTÃO OK...")
+                    print(
+                        "CLICANDO NO BOTÃO OK..."
+                    )
 
                     pyautogui.click(
                         x,
                         y
                     )
 
-                    print("OK CLICADO.")
+                    print(
+                        "OK CLICADO."
+                    )
 
                     print_clicado = True
-
-                    time.sleep(1)
 
                 except Exception as e:
 
                     print(
-                        f"Erro ao clicar no OK da janela Print: {e}"
+                        "Erro ao clicar no OK "
+                        f"da janela Print: {e}"
                     )
 
                     return False
@@ -940,14 +980,17 @@ def tratar_saida_impressao():
             if janela_salvar:
 
                 print()
-                print("JANELA DE SALVAMENTO ENCONTRADA.")
+                print(
+                    "JANELA DE SALVAMENTO ENCONTRADA."
+                )
 
                 return salvar_temporario()
 
         except Exception as e:
 
             print(
-                f"Erro procurando janela de salvamento: {e}"
+                "Erro procurando janela "
+                f"de salvamento: {e}"
             )
 
         # ============================================================
@@ -965,7 +1008,9 @@ def tratar_saida_impressao():
                 if not win32gui.IsWindowVisible(hwnd):
                     return
 
-                titulo = win32gui.GetWindowText(hwnd)
+                titulo = (
+                    win32gui.GetWindowText(hwnd)
+                )
 
                 if "Report Designer" in titulo:
 
@@ -977,25 +1022,39 @@ def tratar_saida_impressao():
             )
 
             if hwnd_report:
+
+                print()
+                print(
+                    "REPORT DESIGNER ENCONTRADO."
+                )
+
                 pyautogui.doubleClick(
                     373,
                     325,
                     interval=0.1
                 )
 
-                time.sleep(1)
+                time.sleep(0.5)
 
         except Exception as e:
 
             print(
-                f"Erro procurando Report Designer: {e}"
+                "Erro procurando Report Designer: "
+                f"{e}"
             )
 
-        time.sleep(0.3)
+        # ============================================================
+        # PEQUENA PAUSA
+        # ============================================================
+
+        time.sleep(0.05)
 
     print()
     print("=" * 80)
-    print("ERRO: nenhuma janela de impressão foi encontrada.")
+    print(
+        "ERRO: nenhuma janela de impressão "
+        "foi encontrada."
+    )
     print("=" * 80)
 
     return False
@@ -1700,11 +1759,54 @@ def preparar_proxima_matricula():
     time.sleep(0.5)
 
     # sequência para retornar ao campo inicial
-    pyautogui.press("tab", presses=3, interval=0.3)
+    pyautogui.press("tab", presses=3, interval=0.02)
 
     print("Pronto para a próxima matrícula.")
 
     return True
+
+# ============================================================
+# VERIFICADOR DE PÁGINA ABERTA
+# ============================================================
+
+def aguardar_janela(titulo_esperado):
+    """Aguarda até a janela aparecer ou atingir o tempo limite."""
+
+    print(f"[INFO] Aguardando a janela: {titulo_esperado}")
+
+    inicio = time.monotonic()
+
+    while time.monotonic() - inicio < TEMPO_LIMITE:
+        janela = localizar_janela(titulo_esperado)
+
+        if janela is not None:
+            return janela
+
+        time.sleep(INTERVALO_VERIFICACAO)
+
+    raise TimeoutError(
+        f"A janela '{titulo_esperado}' não apareceu "
+        f"em {TEMPO_LIMITE} segundos."
+    )
+
+def localizar_janela(titulo_esperado):
+    """
+    Localiza uma janela pelo título ou por um trecho dele.
+    Retorna o objeto da janela ou None se não encontrar.
+    """
+
+    for janela in Desktop(backend="win32").windows():
+        try:
+            titulo = janela.window_text().strip()
+
+            if titulo_esperado.lower() in titulo.lower():
+                print(f"[OK] Janela identificada: {titulo}")
+                return janela
+
+        except Exception:
+            continue
+
+    return None
 
 
 # ============================================================
