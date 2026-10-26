@@ -14,6 +14,8 @@ from pywinauto import Desktop
 from openpyxl import load_workbook
 
 
+EXE = Path(r"C:\Folha\folha.exe")
+
 CRED = Path("data/credencial.txt")
 
 
@@ -24,6 +26,11 @@ CRED = Path("data/credencial.txt")
 TITULO_GERADOR = (
     "Gerador de Relatórios "
     "( Versão: 4.0 ) - Recursos Humanos e Folha de Pagamento"
+)
+
+TITULO_JANELA_EL = (
+    "Recursos Humanos e Folha de Pagamento "
+    "[ Versão 3.02 - 17/06/2026 ]"
 )
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
@@ -380,6 +387,9 @@ def definir_impressora_pdf():
 
             return
 
+        janela = aguardar_janela(TITULO_JANELA_EL)
+        janela.set_focus()
+        
         # ====================================================
         # ABRE GERADOR
         # ====================================================
@@ -1264,7 +1274,7 @@ def salvar_temporario():
     campo_nome.type_keys(
         str(caminho_arquivo),
         with_spaces=True,
-        pause=0.05
+        pause=0.001
     )
 
     print("Nome do arquivo preenchido.")
