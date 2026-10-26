@@ -7,7 +7,7 @@ import subprocess
 import re
 import shutil
 import fitz
-
+import argparse
 
 from pathlib import Path
 from pywinauto import Desktop
@@ -1824,21 +1824,85 @@ def localizar_janela(titulo_esperado):
 # ============================================================
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Gera fichas financeiras por planilha ou matrícula."
+    )
 
-    if len(sys.argv) != 2:
-        print(
-            'Uso: python src/main.py "planilha.xlsx"'
+    parser.add_argument(
+        "planilha",
+        nargs="?",
+        help="Caminho da planilha Excel com as matrículas e os períodos."
+    )
+
+    parser.add_argument(
+        "--mat",
+        nargs=2,
+        metavar=("MATRICULA", "PERIODO"),
+        help="Matrícula e intervalo de anos. Ex.: --mat 1234 2000-2005"
+    )
+
+    args = parser.parse_args()
+
+    # ========================================================
+    # MODO MATRÍCULA
+    # ========================================================
+
+    if args.mat:
+        if args.planilha:
+            parser.error(
+                "Use --mat ou o caminho da planilha, não os dois."
+            )
+
+        matricula = args.mat[0]
+        periodo = args.mat[1]
+
+        resultado = re.fullmatch(
+            r"(\d{4})-(\d{4})",
+            periodo
         )
-        return
 
-    planilha = Path(sys.argv[1])
+        if not resultado:
+            parser.error(
+                "Período inválido. Use o formato ANO_INICIAL-ANO_FINAL, "
+                "por exemplo: 2000-2005."
+            )
 
-    dados = ler_planilha(planilha)
+        ano_inicial = int(resultado.group(1))
+        ano_final = int(resultado.group(2))
+
+        if ano_inicial > ano_final:
+            parser.error(
+                "O ano inicial não pode ser maior que o ano final."
+            )
+
+        dados = [
+            (
+                matricula,
+                list(range(ano_inicial, ano_final + 1))
+            )
+        ]
+
+    # ========================================================
+    # MODO PLANILHA
+    # ========================================================
+
+    elif args.planilha:
+        planilha = Path(args.planilha)
+
+        if not planilha.is_file():
+            parser.error(
+                f"Planilha não encontrada: {planilha}"
+            )
+
+        dados = ler_planilha(planilha)
+
+    else:
+        parser.error(
+            'Informe uma planilha ou use --mat MATRICULA ANO_INICIAL-ANO_FINAL.'
+        )
 
     if not dados:
-        print(
-            "Nenhum registro encontrado."
-        )
+        print("Nenhum registro encontrado.")
         return
 
     print()
