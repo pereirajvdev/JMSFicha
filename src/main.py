@@ -31,14 +31,13 @@ TITULO_GERADOR = (
     "Gerador de Relatórios "
     "( Versão: 4.0 ) - Recursos Humanos e Folha de Pagamento"
 )
-
 TITULO_JANELA_EL = (
     "Recursos Humanos e Folha de Pagamento "
     "[ Versão 3.02 - 17/06/2026 ]"
 )
+TITULO_INICIAL = "Form1"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
-
 PASTA_SERVIDORES = Path(
     r"C:\Users\Joao Castro\Desktop\JOAO\Servidores"
 )
@@ -81,7 +80,8 @@ def login():
         cwd=str(EXE.parent)
     )
 
-    time.sleep(.5)
+    janela = aguardar_janela(TITULO_INICIAL)
+    janela.set_focus()
 
     print("Preenchendo usuário...")
 
@@ -97,13 +97,15 @@ def login():
         senha,
         interval=.002
     )
-
+    
     pyautogui.press("tab")
     time.sleep(.02)
 
     pyautogui.press("enter")
     time.sleep(.5)
 
+    input()
+    
     pyautogui.hotkey("alt")
     time.sleep(.02)
 
