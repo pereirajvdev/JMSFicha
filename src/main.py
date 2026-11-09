@@ -1,21 +1,67 @@
 import sys
 import time
 import win32gui
-import pyautogui
 import win32print
+import ctypes
+import pyautogui
 import subprocess
 import re
 import shutil
 import fitz
 import argparse
+import psutil
+import subprocess
 
 import traceback
 from contrato import adicionar_argumentos, pasta_existente, registros_para_dados, Retorno
 
+from ctypes import wintypes
 from pathlib import Path
 from pywinauto import Desktop
 from openpyxl import load_workbook
 
+import subprocess
+import pyautogui
+import argparse
+import ctypes
+import re
+import time
+from contextlib import contextmanager
+from ctypes import wintypes
+from functools import wraps
+from pathlib import Path
+
+
+from pywinauto import Desktop, keyboard, mouse
+from pywinauto.timings import Timings
+
+import pyperclip
+
+# ======================================================================
+# WIN32 (ctypes): enumeração rápida de janelas
+# ======================================================================
+_user32 = ctypes.windll.user32
+
+_WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+_user32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
+_user32.EnumWindows.restype = wintypes.BOOL
+_user32.IsWindow.argtypes = [wintypes.HWND]
+_user32.IsWindow.restype = wintypes.BOOL
+_user32.IsWindowVisible.argtypes = [wintypes.HWND]
+_user32.IsWindowVisible.restype = wintypes.BOOL
+_user32.IsHungAppWindow.argtypes = [wintypes.HWND]
+_user32.IsHungAppWindow.restype = wintypes.BOOL
+_user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+_user32.GetWindowTextLengthW.restype = ctypes.c_int
+_user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+_user32.GetWindowTextW.restype = ctypes.c_int
+
+
+# Instância única de Desktop, usada só para criar o wrapper da janela escolhida.
+_DESKTOP = Desktop(backend="win32")
+
+_AVISOS_TRAVADA = set()
 
 EXE = Path(r"C:\Folha\folha.exe")
 
@@ -36,6 +82,7 @@ TITULO_JANELA_EL = (
     "[ Versão 3.02 - 17/06/2026 ]"
 )
 TITULO_INICIAL = "Form1"
+TITULO_JMS = "Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
 PASTA_SERVIDORES = Path(
@@ -80,6 +127,8 @@ def login():
         cwd=str(EXE.parent)
     )
 
+    fechar_jms_aberto()
+
     janela = aguardar_janela(TITULO_INICIAL)
     janela.set_focus()
 
@@ -105,7 +154,7 @@ def login():
     time.sleep(.5)
 
     input()
-    
+
     pyautogui.hotkey("alt")
     time.sleep(.02)
 
@@ -185,6 +234,46 @@ def login():
     return True
 
 
+def fechar_jms_aberto():
+    """Encerra o processo associado à janela principal, se estiver aberto."""
+
+    print("[INFO] Verificando se a folha já está aberta...")
+
+    janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS)
+
+    if janela is None:
+        print("[INFO] Nenhuma instância anterior encontrada.")
+        return
+
+    try:
+        pid = janela.process_id()
+        processo = psutil.Process(pid)
+
+        print(
+            f"[INFO] Encerrando {processo.name()} "
+            f"(PID {pid})..."
+        )
+
+        processo.terminate()
+
+        try:
+            processo.wait(timeout=1)
+        except psutil.TimeoutExpired:
+            processo.kill()
+            processo.wait(timeout=1)
+
+        print("[OK] Instância anterior encerrada.")
+
+    except psutil.NoSuchProcess:
+        print("[INFO] O processo já foi encerrado.")
+
+    except psutil.AccessDenied:
+        raise RuntimeError(
+            "Acesso negado ao processo da folha. "
+            "Verifique as permissões do Windows."
+        )
+
+    
 # ============================================================
 # LEITURA DA PLANILHA
 # ============================================================
@@ -1781,48 +1870,185 @@ def preparar_proxima_matricula():
 
     return True
 
-# ============================================================
-# VERIFICADOR DE PÁGINA ABERTA
-# ============================================================
+# ======================================================================
+# CRONOMETRAR
+# ======================================================================
+PERF_ATIVO = False
+CACHE_ATIVO = True
+_TEMPOS = {}
 
-def aguardar_janela(titulo_esperado):
-    """Aguarda até a janela aparecer ou atingir o tempo limite."""
+def _registrar_tempo(nome, duracao):
+    registro = _TEMPOS.setdefault(nome, [0, 0.0])
+    registro[0] += 1
+    registro[1] += duracao
 
-    print(f"[INFO] Aguardando a janela: {titulo_esperado}")
 
-    inicio = time.monotonic()
+@contextmanager
+def medir(nome):
+    """Mede o tempo de um bloco. Sem efeito se --perf estiver desligado."""
+    if not PERF_ATIVO:
+        yield
+        return
 
-    while time.monotonic() - inicio < TEMPO_LIMITE:
-        janela = localizar_janela(titulo_esperado)
+    inicio = time.perf_counter()
+    try:
+        yield
+    finally:
+        _registrar_tempo(nome, time.perf_counter() - inicio)
 
-        if janela is not None:
-            return janela
+
+def cronometrar(nome=None):
+    """Decorator que mede o tempo total de uma função (só com --perf)."""
+    def decorador(func):
+        rotulo = nome or func.__name__
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not PERF_ATIVO:
+                return func(*args, **kwargs)
+
+            inicio = time.perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                _registrar_tempo(rotulo, time.perf_counter() - inicio)
+
+        return wrapper
+    return decorador
+
+
+def imprimir_relatorio_tempos():
+    if not PERF_ATIVO or not _TEMPOS:
+        return
+
+    print("\n" + "=" * 66)
+    print(" RELATÓRIO DE DESEMPENHO (--perf)")
+    print(" Obs.: tempos aninhados se sobrepõem; não some as linhas.")
+    print("=" * 66)
+    print(f"{'Etapa':<42}{'Chamadas':>9}{'Total (s)':>11}{'Média (s)':>11}")
+
+    for nome, (chamadas, total) in sorted(
+        _TEMPOS.items(), key=lambda item: item[1][1], reverse=True
+    ):
+        media = total / chamadas if chamadas else 0.0
+        print(f"{nome:<42}{chamadas:>9}{total:>11.2f}{media:>11.3f}")
+
+    print("=" * 66)
+
+# ======================================================================
+# JANELAS
+# ======================================================================
+def _listar_janelas_visiveis():
+    """Enumera janelas de nível superior visíveis: [(hwnd, titulo), ...]."""
+    resultado = []
+
+    def callback(hwnd, _lparam):
+        if _user32.IsWindowVisible(hwnd):
+            tamanho = _user32.GetWindowTextLengthW(hwnd)
+            if tamanho:
+                buffer = ctypes.create_unicode_buffer(tamanho + 1)
+                _user32.GetWindowTextW(hwnd, buffer, tamanho + 1)
+                resultado.append((hwnd, buffer.value))
+        return True
+
+    proc = _WNDENUMPROC(callback)
+    _user32.EnumWindows(proc, 0)
+    return resultado
+
+
+def _janela_visivel(hwnd):
+    return bool(_user32.IsWindow(hwnd)) and bool(_user32.IsWindowVisible(hwnd))
+
+
+def _buscar_janela(titulos):
+    """
+    Faz UMA enumeração e retorna (hwnd, titulo_real) da primeira janela
+    válida, respeitando a ordem dos títulos informados.
+    Comparação: texto idêntico (sem diferenciar maiúsculas/minúsculas),
+    como na versão original. Janelas travadas são ignoradas.
+    """
+    candidatas = {}
+
+    for hwnd, texto in _listar_janelas_visiveis():
+        texto = texto.strip()
+        candidatas.setdefault(texto.casefold(), []).append((hwnd, texto))
+
+    for titulo in titulos:
+        for hwnd, texto in candidatas.get(titulo.strip().casefold(), []):
+            if _user32.IsHungAppWindow(hwnd):
+                if hwnd not in _AVISOS_TRAVADA:
+                    _AVISOS_TRAVADA.add(hwnd)
+                    print(f"[AGUARDANDO] Janela sem resposta: {texto}")
+                continue
+
+            return hwnd, texto
+
+    return None
+
+
+def _criar_wrapper(hwnd):
+    return _DESKTOP.window(handle=hwnd).wrapper_object()
+
+
+@cronometrar()
+def localizar_janela(titulo_esperado):
+    """Verificação única (sem espera). Retorna wrapper ou None."""
+    achado = _buscar_janela([titulo_esperado])
+
+    if achado is None:
+        return None
+
+    hwnd, titulo = achado
+    print(f"[OK] Janela identificada: {titulo}")
+    return _criar_wrapper(hwnd)
+
+
+@cronometrar()
+def aguardar_janela(*titulos_esperados, time_limit=TEMPO_LIMITE):
+    """
+    Aguarda até que uma janela com um dos títulos apareça.
+    Retorna o wrapper da primeira janela válida (seguindo a ordem dos
+    títulos) ou None se o tempo limite estourar.
+    """
+    print(
+        f"[INFO] Aguardando uma das janelas: "
+        f"{', '.join(titulos_esperados)}"
+    )
+
+    limite = time.monotonic() + time_limit
+
+    while True:
+        with medir("enumerar janelas"):
+            achado = _buscar_janela(titulos_esperados)
+
+        if achado is not None:
+            hwnd, titulo = achado
+            print(f"[OK] Janela identificada: {titulo}")
+            return _criar_wrapper(hwnd)
+
+        if time.monotonic() >= limite:
+            break
 
         time.sleep(INTERVALO_VERIFICACAO)
 
-    raise TimeoutError(
-        f"A janela '{titulo_esperado}' não apareceu "
-        f"em {TEMPO_LIMITE} segundos."
+    print(
+        f"[INFO] Nenhuma janela válida apareceu em "
+        f"{time_limit} segundos: "
+        f"{', '.join(titulos_esperados)}"
     )
 
-def localizar_janela(titulo_esperado):
-    """
-    Localiza uma janela pelo título ou por um trecho dele.
-    Retorna o objeto da janela ou None se não encontrar.
-    """
-
-    for janela in Desktop(backend="win32").windows():
-        try:
-            titulo = janela.window_text().strip()
-
-            if titulo_esperado.lower() in titulo.lower():
-                print(f"[OK] Janela identificada: {titulo}")
-                return janela
-
-        except Exception:
-            continue
-
     return None
+
+
+def exigir_janela(*titulos_esperados, time_limit=TEMPO_LIMITE):
+    janela = aguardar_janela(*titulos_esperados, time_limit=time_limit)
+
+    if janela is None:
+        raise RuntimeError(
+            "Janela não encontrada: " + ", ".join(titulos_esperados)
+        )
+
+    return janela
 
 
 # ============================================================
