@@ -83,6 +83,7 @@ TITULO_JANELA_EL = (
 )
 TITULO_INICIAL = "Form1"
 TITULO_JMS = "Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
+TITULO_INTERNO = "Form1"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
 PASTA_SERVIDORES = Path(
@@ -116,6 +117,8 @@ def login():
         print(f"Caminho procurado: {EXE}")
         return False
 
+    fechar_jms_aberto()
+
     usuario, senha = CRED.read_text(
         encoding="utf-8"
     ).splitlines()[:2]
@@ -127,8 +130,6 @@ def login():
         cwd=str(EXE.parent)
     )
 
-    fechar_jms_aberto()
-
     janela = aguardar_janela(TITULO_INICIAL)
     janela.set_focus()
 
@@ -136,25 +137,29 @@ def login():
 
     pyautogui.write(
         usuario,
-        interval=.002
+        interval=.001
     )
 
     pyautogui.press("tab")
-    time.sleep(.02)
+    time.sleep(.005)
 
     pyautogui.write(
         senha,
-        interval=.002
+        interval=.001
     )
     
     pyautogui.press("tab")
-    time.sleep(.02)
+    time.sleep(.005)
 
     pyautogui.press("enter")
-    time.sleep(.5)
 
-    input()
+    print("Login concluído.")
+    return True
 
+def abrir_janela_interna():
+    janela = aguardar_janela(TITULO_JMS)
+    janela.set_focus()
+    
     pyautogui.hotkey("alt")
     time.sleep(.02)
 
@@ -182,54 +187,6 @@ def login():
 
     pyautogui.press("enter")
     time.sleep(.02)
-
-    # Localiza e ativa a janela Folha - PREF...
-    print("Procurando janela Folha - PREF...")
-
-    desktop = Desktop(backend="win32")
-    janela_folha = None
-    limite = time.time() + 10
-
-    while time.time() < limite:
-        for janela in desktop.windows():
-            try:
-                titulo = janela.window_text().strip()
-
-                if (
-                    janela.is_visible()
-                    and titulo.startswith("Folha - PREF")
-                ):
-                    janela_folha = janela
-                    break
-
-            except Exception:
-                continue
-
-        if janela_folha:
-            break
-
-        time.sleep(.02)
-
-    if janela_folha:
-        try:
-            janela_folha.set_focus()
-            time.sleep(.02)
-
-            print(
-                f"Foco definido: "
-                f"{janela_folha.window_text()}"
-            )
-
-        except Exception as e:
-            print(f"Erro ao definir foco: {e}")
-
-    else:
-        print(
-            "ERRO: janela Folha - PREF... "
-            "não encontrada após 10 segundos."
-        )
-
-    print("Login concluído.")
 
     return True
 
@@ -1990,6 +1947,26 @@ def _criar_wrapper(hwnd):
     return _DESKTOP.window(handle=hwnd).wrapper_object()
 
 
+def verificar_janela_interna(titulo_interno, titulo_janela):
+
+    print(f"Aguardando: {titulo_interno} from {titulo_janela}")
+    
+    janela = aguardar_janela(titulo_janela)
+
+    controles = janela.descendants()
+
+    for i, controle in enumerate(controles):
+        try:
+            if titulo_interno == controle.window_text():
+                print(f"Encontrado: {titulo_interno} from {titulo_janela}")
+                return True
+
+        except Exception as e:
+            print(f"[{i}] Erro: {e}")
+
+    return False
+
+
 @cronometrar()
 def localizar_janela(titulo_esperado):
     """Verificação única (sem espera). Retorna wrapper ou None."""
@@ -2127,6 +2104,14 @@ def executar(dados):
     # --------------------------------------------------------------- login
     if not login():
         return False, "Login no Folha não concluído."
+
+    if not abrir_janela_interna():
+        return False, "Abrir janela interna não concluído."
+
+    # identifica a janela interna
+    if not verificar_janela_interna(TITULO_INTERNO, TITULO_JMS):
+        return False, "Janela interna não identificada"
+    input()
 
     # ------------------------------------------------- ciclo de matrículas
     for indice_matricula, (matricula, anos) in enumerate(dados, start=1):
