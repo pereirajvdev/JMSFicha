@@ -9,6 +9,9 @@ import shutil
 import fitz
 import argparse
 
+import traceback
+from contrato import adicionar_argumentos, pasta_existente, registros_para_dados, Retorno
+
 from pathlib import Path
 from pywinauto import Desktop
 from openpyxl import load_workbook
@@ -16,7 +19,8 @@ from openpyxl import load_workbook
 
 EXE = Path(r"C:\Folha\folha.exe")
 
-CRED = Path("data/credencial.txt")
+RAIZ_PROJETO = Path(__file__).resolve().parents[1]   # se o arquivo está em src/
+CRED = RAIZ_PROJETO / "data" / "credencial.txt"
 
 
 # ============================================================
@@ -1822,10 +1826,144 @@ def localizar_janela(titulo_esperado):
 # ============================================================
 # MAIN
 # ============================================================
+# Substitui TODO o trecho a partir do cabeçalho "# MAIN" até o fim do arquivo.
+
+def obter_dados(args, parser):
+    """Devolve [(matricula, [anos...]), ...] a partir de --registros, --mat ou da planilha."""
+
+    if args.registros is not None:
+        if args.mat or args.planilha:
+            parser.error("Use --registros, --mat ou a planilha, apenas um deles.")
+        return registros_para_dados(args.registros, parser)
+
+    if args.mat:
+        if args.planilha:
+            parser.error("Use --mat ou o caminho da planilha, não os dois.")
+
+        matricula, periodo = args.mat
+        resultado = re.fullmatch(r"(\d{4})-(\d{4})", periodo)
+
+        if not resultado:
+            parser.error(
+                "Período inválido. Use o formato ANO_INICIAL-ANO_FINAL, "
+                "por exemplo: 2000-2005."
+            )
+
+        ano_inicial, ano_final = int(resultado.group(1)), int(resultado.group(2))
+
+        if ano_inicial > ano_final:
+            parser.error("O ano inicial não pode ser maior que o ano final.")
+
+        return [(matricula, list(range(ano_inicial, ano_final + 1)))]
+
+    if args.planilha:
+        planilha = Path(args.planilha)
+
+        if not planilha.is_file():
+            parser.error(f"Planilha não encontrada: {planilha}")
+
+        return ler_planilha(planilha)
+
+    parser.error(
+        "Informe --registros, uma planilha ou --mat MATRICULA ANO_INICIAL-ANO_FINAL."
+    )
+
+
+def executar(dados):
+    """Processa todos os registros. Devolve (sucesso, mensagem_de_erro)."""
+
+    print()
+    print("=" * 80)
+    print("REGISTROS ENCONTRADOS")
+    print("=" * 80)
+
+    for matricula, anos in dados:
+        print(f"Matrícula: {matricula} | Anos: {anos[0]} até {anos[-1]}")
+
+    # ---------------------------------------------------------- impressora
+    impressora = win32print.GetDefaultPrinter()
+
+    if impressora.strip().lower() == "microsoft print to pdf":
+        print("Impressora padrão já é Microsoft Print to PDF.")
+    else:
+        definir_impressora_pdf()
+        impressora = win32print.GetDefaultPrinter()
+        print("IMPRESSORA PADRÃO:")
+        print(impressora)
+
+        if impressora.strip().lower() != "microsoft print to pdf":
+            print("ATENÇÃO: a impressora padrão não é Microsoft Print to PDF.")
+
+        time.sleep(1)
+
+    # --------------------------------------------------------------- login
+    if not login():
+        return False, "Login no Folha não concluído."
+
+    # ------------------------------------------------- ciclo de matrículas
+    for indice_matricula, (matricula, anos) in enumerate(dados, start=1):
+
+        print()
+        print("=" * 80)
+        print(f"MATRÍCULA {indice_matricula}/{len(dados)}")
+        print("=" * 80)
+        print(f"Matrícula: {matricula}")
+        print(f"Anos: {anos[0]} até {anos[-1]}")
+
+        for indice_ano, ano in enumerate(anos, start=1):
+
+            print()
+            print("=" * 80)
+            print(f"PROCESSANDO ANO {indice_ano}/{len(anos)}")
+            print("=" * 80)
+            print(f"Matrícula: {matricula}")
+            print(f"Ano: {ano}")
+
+            gerarFicha(matricula, ano)
+
+            if not tratar_saida_impressao():
+                return False, (
+                    f"Erro ao gerar a saída de impressão "
+                    f"(matrícula {matricula}, ano {ano})."
+                )
+
+            print()
+            print("SAÍDA DE IMPRESSÃO CONCLUÍDA")
+
+            if not organizar_pdf_temporario():
+                return False, (
+                    f"Erro ao organizar o PDF "
+                    f"(matrícula {matricula}, ano {ano})."
+                )
+
+            print()
+            print("PDF ORGANIZADO COM SUCESSO.")
+
+            if indice_ano < len(anos):
+                avancar_para_proximo_ano()
+            else:
+                print()
+                print("TODOS OS ANOS DA MATRÍCULA FORAM PROCESSADOS.")
+
+                if indice_matricula < len(dados):
+                    preparar_proxima_matricula()
+
+        if indice_matricula < len(dados):
+            time.sleep(1)
+
+    print()
+    print("=" * 80)
+    print("PROCESSAMENTO CONCLUÍDO")
+    print("=" * 80)
+
+    return True, ""
+
 
 def main():
+    global PASTA_SERVIDORES, PASTA_DESTINO_FIXA, RETORNO
+
     parser = argparse.ArgumentParser(
-        description="Gera fichas financeiras por planilha ou matrícula."
+        description="Gera fichas financeiras (2008 e anteriores) por registros, planilha ou matrícula."
     )
 
     parser.add_argument(
@@ -1841,267 +1979,41 @@ def main():
         help="Matrícula e intervalo de anos. Ex.: --mat 1234 2000-2005"
     )
 
-    args = parser.parse_args()
+    adicionar_argumentos(parser)
 
-    # ========================================================
-    # MODO MATRÍCULA
-    # ========================================================
+    args = parser.parse_args()  # entrada inválida: sai com código 2
 
-    if args.mat:
-        if args.planilha:
-            parser.error(
-                "Use --mat ou o caminho da planilha, não os dois."
-            )
+    servidores = pasta_existente(parser, args.servidores, "--servidores")
+    pasta = pasta_existente(parser, args.pasta, "--pasta")
+    dados = obter_dados(args, parser)
 
-        matricula = args.mat[0]
-        periodo = args.mat[1]
+    if servidores is not None:
+        PASTA_SERVIDORES = servidores
 
-        resultado = re.fullmatch(
-            r"(\d{4})-(\d{4})",
-            periodo
-        )
-
-        if not resultado:
-            parser.error(
-                "Período inválido. Use o formato ANO_INICIAL-ANO_FINAL, "
-                "por exemplo: 2000-2005."
-            )
-
-        ano_inicial = int(resultado.group(1))
-        ano_final = int(resultado.group(2))
-
-        if ano_inicial > ano_final:
-            parser.error(
-                "O ano inicial não pode ser maior que o ano final."
-            )
-
-        dados = [
-            (
-                matricula,
-                list(range(ano_inicial, ano_final + 1))
-            )
-        ]
-
-    # ========================================================
-    # MODO PLANILHA
-    # ========================================================
-
-    elif args.planilha:
-        planilha = Path(args.planilha)
-
-        if not planilha.is_file():
-            parser.error(
-                f"Planilha não encontrada: {planilha}"
-            )
-
-        dados = ler_planilha(planilha)
-
-    else:
-        parser.error(
-            'Informe uma planilha ou use --mat MATRICULA ANO_INICIAL-ANO_FINAL.'
-        )
+    PASTA_DESTINO_FIXA = pasta
+    RETORNO = Retorno(args.retorno)
 
     if not dados:
         print("Nenhum registro encontrado.")
-        return
+        RETORNO.gravar(False, "Nenhum registro encontrado.")
+        return 1
 
-    print()
-    print("=" * 80)
-    print("REGISTROS ENCONTRADOS")
-    print("=" * 80)
+    try:
+        sucesso, erro = executar(dados)
+    except Exception as exc:
+        traceback.print_exc()
+        sucesso, erro = False, f"Erro inesperado: {exc}"
 
-    for matricula, anos in dados:
-        print(
-            f"Matrícula: {matricula} | "
-            f"Anos: {anos[0]} até {anos[-1]}"
-        )
-
-    # ========================================================
-    # IMPRESSORA
-    # ========================================================
-
-    impressora = win32print.GetDefaultPrinter()
-
-    if impressora.strip().lower() == "microsoft print to pdf":
-
-        print(
-            "Impressora padrão já é Microsoft Print to PDF."
-        )
-
-    else:
-
-        definir_impressora_pdf()
-
-        print("IMPRESSORA PADRÃO:")
-        print(impressora)
-
-        time.sleep(1)
-
-    # ========================================================
-    # LOGIN
-    # ========================================================
-
-    if not login():
-        print("ERRO: login não concluído.")
-        return
-
-    # ========================================================
-    # CICLO DE MATRÍCULAS
-    # ========================================================
-
-    for indice_matricula, (matricula, anos) in enumerate(
-        dados,
-        start=1
-    ):
-
+    if not sucesso:
         print()
-        print("=" * 80)
-        print(
-            f"MATRÍCULA {indice_matricula}/{len(dados)}"
-        )
-        print("=" * 80)
+        print(f"ERRO: {erro}", file=sys.stderr)
+        RETORNO.falha(erro)
 
-        print(
-            f"Matrícula: {matricula}"
-        )
+    RETORNO.gravar(sucesso, erro)
 
-        print(
-            f"Anos: {anos[0]} até {anos[-1]}"
-        )
+    return 0 if sucesso else 1
 
-        # ====================================================
-        # CICLO DE ANOS
-        # ====================================================
-
-        for indice_ano, ano in enumerate(
-            anos,
-            start=1
-        ):
-
-            print()
-            print("=" * 80)
-            print(
-                f"PROCESSANDO ANO "
-                f"{indice_ano}/{len(anos)}"
-            )
-            print("=" * 80)
-
-            print(
-                f"Matrícula: {matricula}"
-            )
-
-            print(
-                f"Ano: {ano}"
-            )
-
-            # ------------------------------------------------
-            # GERA FICHA
-            # ------------------------------------------------
-
-            gerarFicha(
-                matricula,
-                ano
-            )
-
-            # ------------------------------------------------
-            # TRATA SAÍDA DE IMPRESSÃO
-            # ------------------------------------------------
-
-            if not tratar_saida_impressao():
-
-                print()
-                print("=" * 80)
-                print(
-                    "ERRO AO GERAR A SAÍDA DE IMPRESSÃO"
-                )
-                print("=" * 80)
-
-                return
-
-            print()
-            print("=" * 80)
-            print(
-                "SAÍDA DE IMPRESSÃO CONCLUÍDA"
-            )
-            print("=" * 80)
-
-            # ------------------------------------------------
-            # ORGANIZA PDF
-            # ------------------------------------------------
-
-            if not organizar_pdf_temporario():
-
-                print()
-                print("=" * 80)
-                print(
-                    "ERRO AO ORGANIZAR O PDF"
-                )
-                print("=" * 80)
-
-                return
-
-            print()
-            print(
-                "PDF ORGANIZADO COM SUCESSO."
-            )
-
-            # ------------------------------------------------
-            # PRÓXIMO ANO
-            # ------------------------------------------------
-
-            if indice_ano < len(anos):
-
-                avancar_para_proximo_ano()
-
-            else:
-
-                if indice_ano < len(anos):
-
-                    avancar_para_proximo_ano()
-
-                else:
-
-                    print()
-                    print("=" * 80)
-                    print(
-                        "TODOS OS ANOS DA MATRÍCULA "
-                        "FORAM PROCESSADOS."
-                    )
-                    print("=" * 80)
-
-                    if indice_matricula < len(dados):
-
-                        preparar_proxima_matricula()
-
-        # ====================================================
-        # PRÓXIMA MATRÍCULA
-        # ====================================================
-
-        if indice_matricula < len(dados):
-
-            print()
-            print("=" * 80)
-            print(
-                "AVANÇANDO PARA A PRÓXIMA MATRÍCULA"
-            )
-            print("=" * 80)
-
-            # Aqui colocaremos a sequência necessária
-            # para voltar/preparar os campos da próxima
-            # matrícula.
-
-            time.sleep(1)
-
-    # ========================================================
-    # FINAL
-    # ========================================================
-
-    print()
-    print("=" * 80)
-    print("PROCESSAMENTO CONCLUÍDO")
-    print("=" * 80)
-    
 
 if __name__ == "__main__":
 
-    main()
+    sys.exit(main())
