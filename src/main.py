@@ -205,39 +205,38 @@ def fechar_jms_aberto():
 
     print("[INFO] Verificando se a folha já está aberta...")
 
-    janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS, time_limit=.5)
+    janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS, TITULO_REPORT, time_limit=.5)
 
-    if janela is None:
-        print("[INFO] Nenhuma instância anterior encontrada.")
-        return
-
-    try:
-        pid = janela.process_id()
-        processo = psutil.Process(pid)
-
-        print(
-            f"[INFO] Encerrando {processo.name()} "
-            f"(PID {pid})..."
-        )
-
-        processo.terminate()
-
+    while janela is not None:
         try:
-            processo.wait(timeout=1)
-        except psutil.TimeoutExpired:
-            processo.kill()
-            processo.wait(timeout=1)
+            pid = janela.process_id()
+            processo = psutil.Process(pid)
 
-        print("[OK] Instância anterior encerrada.")
+            print(
+                f"[INFO] Encerrando {processo.name()} "
+                f"(PID {pid})..."
+            )
 
-    except psutil.NoSuchProcess:
-        print("[INFO] O processo já foi encerrado.")
+            processo.terminate()
 
-    except psutil.AccessDenied:
-        raise RuntimeError(
-            "Acesso negado ao processo da folha. "
-            "Verifique as permissões do Windows."
-        )
+            try:
+                processo.wait(timeout=1)
+            except psutil.TimeoutExpired:
+                processo.kill()
+                processo.wait(timeout=1)
+
+            print("[OK] Instância anterior encerrada.")
+
+        except psutil.NoSuchProcess:
+            print("[INFO] O processo já foi encerrado.")
+
+        except psutil.AccessDenied:
+            raise RuntimeError(
+                "Acesso negado ao processo da folha. "
+                "Verifique as permissões do Windows."
+            )
+
+        janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS, TITULO_REPORT, time_limit=.5)
 
     
 # ============================================================
@@ -292,342 +291,18 @@ def ler_planilha(caminho):
 
 
 # ============================================================
-# FOLHA INÍCIO
-# ============================================================
-
-def folhaInicio():
-
-    SCRIPT = Path(
-        r"C:\Users\Joao Castro\Documents\FolhaInicio\src\main.py"
-    )
-
-    print()
-    print("=" * 80)
-    print("EXECUTANDO FOLHA INÍCIO")
-    print("=" * 80)
-
-    print(f"Script: {SCRIPT}")
-    print(f"Existe: {SCRIPT.exists()}")
-    print(f"Diretório: {SCRIPT.parent}")
-    print(f"Diretório existe: {SCRIPT.parent.exists()}")
-
-    if not SCRIPT.exists():
-
-        print(
-            "ERRO: main.py do FolhaInicio não encontrado."
-        )
-
-        return None
-
-    if not SCRIPT.parent.is_dir():
-
-        print(
-            "ERRO: diretório do FolhaInicio inválido."
-        )
-
-        return None
-
-    processo = subprocess.Popen(
-        ["python", str(SCRIPT)],
-        cwd=str(SCRIPT.parent)
-    )
-
-    return processo
-
-
-# ============================================================
-# VERIFICA GERADOR
-# ============================================================
-
-def verificarGerador():
-
-    print()
-    print("=" * 80)
-    print("VERIFICANDO GERADOR DE RELATÓRIOS")
-    print("=" * 80)
-
-    limite = time.time() + 10
-
-    while time.time() < limite:
-
-        try:
-
-            hwnd_encontrado = None
-
-            def procurar_janela(hwnd, _):
-
-                nonlocal hwnd_encontrado
-
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
-
-                titulo = win32gui.GetWindowText(hwnd).strip()
-
-                if titulo == TITULO_GERADOR:
-                    hwnd_encontrado = hwnd
-
-            win32gui.EnumWindows(
-                procurar_janela,
-                None
-            )
-
-            if hwnd_encontrado:
-
-                print()
-                print("GERADOR DE RELATÓRIOS ENCONTRADO")
-                print(f"Handle : {hwnd_encontrado}")
-                print(
-                    f"Título : "
-                    f"{win32gui.GetWindowText(hwnd_encontrado)}"
-                )
-
-                return True
-
-        except Exception as e:
-
-            print(
-                f"Erro ao verificar Gerador: {e}"
-            )
-
-        time.sleep(.2)
-
-    print()
-    print(
-        "ERRO: Gerador de Relatórios não foi encontrado."
-    )
-
-    return False
-
-
-# ============================================================
 # DEFINIR IMPRESSORA PDF
 # ============================================================
 
 def definir_impressora_pdf():
+    """Executa o AutoFicha no modo padrão."""
 
-    MAX_TENTATIVAS = 3
+    script = r"C:\Users\Joao Castro\Documents\AutoFicha\src\main.py"
 
-    # ========================================================
-    # TENTATIVAS DE ABRIR O GERADOR
-    # ========================================================
-
-    for tentativa in range(1, MAX_TENTATIVAS + 1):
-
-        print()
-        print("=" * 80)
-        print(
-            f"TENTATIVA {tentativa}/{MAX_TENTATIVAS}"
-        )
-        print("=" * 80)
-
-        # ====================================================
-        # INICIA FOLHA INÍCIO
-        # ====================================================
-
-        processo = folhaInicio()
-
-        if processo is None:
-
-            print(
-                "FolhaInicio não pôde ser iniciado."
-            )
-
-            return
-
-        codigo = processo.wait()
-
-        print(
-            f"FolhaInicio finalizado. Código: {codigo}"
-        )
-
-        if codigo != 0:
-
-            print(
-                "ATENÇÃO: FolhaInicio terminou com erro."
-            )
-
-            return
-
-        janela = aguardar_janela(TITULO_JANELA_EL)
-        janela.set_focus()
-        
-        # ====================================================
-        # ABRE GERADOR
-        # ====================================================
-
-        time.sleep(.3)
-
-        print(
-            "Enviando sequência: ALT → E → 0 → S"
-        )
-
-        pyautogui.press("alt")
-        time.sleep(.05)
-
-        pyautogui.press("e")
-        time.sleep(.05)
-
-        pyautogui.press("0")
-        time.sleep(.05)
-
-        pyautogui.press("s")
-        time.sleep(.5)
-
-        print(
-            "Sequência concluída."
-        )
-
-        # ====================================================
-        # VERIFICA SE O GERADOR ABRIU
-        # ====================================================
-
-        if verificarGerador():
-
-            print()
-            print(
-                "GERADOR CONFIRMADO!"
-            )
-
-            print(
-                "Continuando para o AutoFicha..."
-            )
-
-            break
-
-        # ====================================================
-        # NÃO ABRIU
-        # ====================================================
-
-        print()
-        print(
-            "Gerador não foi confirmado."
-        )
-
-        if tentativa < MAX_TENTATIVAS:
-
-            print(
-                "Retornando para a tela inicial..."
-            )
-
-            # -----------------------------------------------
-            # FolhaInicio novamente
-            # -----------------------------------------------
-
-            processo = folhaInicio()
-
-            if processo is not None:
-
-                codigo = processo.wait()
-
-                print(
-                    f"FolhaInicio finalizado. Código: {codigo}"
-                )
-
-                if codigo != 0:
-
-                    print(
-                        "ATENÇÃO: erro ao retornar "
-                        "para a tela inicial."
-                    )
-
-                    return
-
-            time.sleep(.5)
-
-            print(
-                "Nova tentativa será realizada..."
-            )
-
-        else:
-
-            print()
-            print(
-                "=" * 80
-            )
-            print(
-                "FALHA: não foi possível abrir "
-                "o Gerador de Relatórios."
-            )
-            print(
-                "=" * 80
-            )
-
-            return
-
-    # ========================================================
-    # EXECUTA AUTOFICHA
-    # ========================================================
-
-    DIRETORIO_AUTOFICHA = Path(
-        r"C:\Users\Joao Castro\Documents\AutoFicha"
+    subprocess.Popen(
+        [sys.executable, script, "--padrao"],
+        cwd=r"C:\Users\Joao Castro\Documents\AutoFicha"
     )
-
-    SCRIPT_AUTOFICHA = (
-        DIRETORIO_AUTOFICHA
-        / "src"
-        / "main.py"
-    )
-
-    print()
-    print("=" * 80)
-    print(
-        "EXECUTANDO AUTOFICHA - MODO PADRÃO"
-    )
-    print("=" * 80)
-
-    print(
-        f"Script: {SCRIPT_AUTOFICHA}"
-    )
-
-    print(
-        f"Existe: {SCRIPT_AUTOFICHA.exists()}"
-    )
-
-    if not SCRIPT_AUTOFICHA.exists():
-
-        print(
-            "ERRO: main.py do AutoFicha não encontrado."
-        )
-
-        return
-
-    processo = subprocess.Popen(
-        [
-            "python",
-            str(SCRIPT_AUTOFICHA),
-            "--padrao"
-        ],
-        cwd=str(DIRETORIO_AUTOFICHA)
-    )
-
-    codigo = processo.wait()
-
-    print(
-        f"AutoFicha finalizado. Código: {codigo}"
-    )
-
-    if codigo != 0:
-
-        print(
-            "ATENÇÃO: AutoFicha terminou com erro."
-        )
-
-        return
-
-    print(
-        "AutoFicha concluído."
-    )
-
-    # ========================================================
-    # RETORNA PARA FOLHA INÍCIO
-    # ========================================================
-
-    print()
-    print(
-        "Retornando para FolhaInicio..."
-    )
-
-    folhaInicio()
 
 
 # ============================================================
@@ -679,257 +354,7 @@ def gerarFicha(matricula, ano):
 
 
 # ============================================================
-# VERIFICA JANELA PRINT
-# ============================================================
-
-def verificar_print():
-
-    try:
-
-        hwnd_print = None
-
-        def procurar_janela(hwnd, _):
-
-            nonlocal hwnd_print
-
-            if not win32gui.IsWindowVisible(hwnd):
-                return
-
-            titulo = win32gui.GetWindowText(hwnd).strip()
-
-            if titulo.lower() == "print":
-                hwnd_print = hwnd
-
-        win32gui.EnumWindows(
-            procurar_janela,
-            None
-        )
-
-        if hwnd_print:
-
-            print()
-            print("JANELA PRINT ENCONTRADA")
-            print("-" * 80)
-            print(f"Handle : {hwnd_print}")
-            print(f"Classe : {win32gui.GetClassName(hwnd_print)}")
-            print(f"Título : {win32gui.GetWindowText(hwnd_print)}")
-            print("-" * 80)
-
-            return hwnd_print
-
-    except Exception as e:
-
-        print(
-            f"Erro ao verificar janela Print: {e}"
-        )
-
-    return None
-
-
-# ============================================================
-# AVANÇA NA JANELA PRINT
-# ============================================================
-
-def avancar_print(hwnd_print):
-
-    print()
-    print("JANELA PRINT CONFIRMADA.")
-    print(f"Handle: {hwnd_print}")
-    print("Procurando botão OK...")
-
-    try:
-
-        desktop = Desktop(backend="win32")
-
-        janela_print = desktop.window(
-            handle=hwnd_print
-        )
-
-        if not janela_print.exists(timeout=3):
-
-            print(
-                "ERRO: Janela Print não encontrada."
-            )
-
-            return False
-
-        print(
-            f"Janela Print encontrada. "
-            f"Handle: {janela_print.handle}"
-        )
-
-        botao_ok = janela_print.child_window(
-            title="OK",
-            class_name="Button"
-        )
-
-        if not botao_ok.exists(timeout=3):
-
-            print(
-                "ERRO: Botão OK não encontrado."
-            )
-
-            return False
-
-        rect = botao_ok.rectangle()
-
-        x = (rect.left + rect.right) // 2
-        y = (rect.top + rect.bottom) // 2
-
-        print()
-        print("BOTÃO OK ENCONTRADO")
-        print(f"Handle : {botao_ok.handle}")
-        print(f"Rect   : {rect}")
-        print(f"Centro : X={x}, Y={y}")
-
-        # ====================================================
-        # ATIVA A JANELA
-        # ====================================================
-
-        print("Ativando janela Print...")
-
-        try:
-            janela_print.set_focus()
-        except Exception as e:
-            print(
-                f"Aviso ao ativar janela: {e}"
-            )
-
-        time.sleep(0.5)
-
-        # ====================================================
-        # MOVE O MOUSE
-        # ====================================================
-
-        print(
-            "Movendo mouse até o botão OK..."
-        )
-
-        pyautogui.moveTo(
-            x,
-            y,
-            duration=.02
-        )
-
-        time.sleep(0.2)
-
-        # ====================================================
-        # CONFIRMA CLIQUE
-        # ====================================================
-
-        print()
-        print("CONFIRMAÇÃO: botão OK localizado.")
-        print(
-            f"Executando clique em "
-            f"X={x}, Y={y}..."
-        )
-
-        pyautogui.doubleClick(
-            x,
-            y,
-            interval=0.15
-        )
-
-        print(
-            "Duplo clique enviado."
-        )
-
-        # ====================================================
-        # AGUARDA SALVAR
-        # ====================================================
-
-        print()
-        print(
-            "Aguardando janela "
-            "'Salvar Saída de Impressão como'..."
-        )
-
-        if verificar_salvar_impressao():
-
-            print(
-                "Salvar impressão confirmada."
-            )
-
-            return salvar_temporario()
-
-        print()
-        print(
-            "ERRO: janela de salvamento "
-            "não apareceu após clicar em OK."
-        )
-
-        return False
-
-    except Exception as e:
-
-        print(
-            f"ERRO ao clicar no botão OK: {e}"
-        )
-
-        return False
-
-
-def verificar_salvar_impressao():
-
-    print()
-    print("=" * 80)
-    print("VERIFICANDO JANELA SALVAR IMPRESSÃO")
-    print("=" * 80)
-
-    limite = time.time() + 10
-
-    while time.time() < limite:
-
-        try:
-            hwnd_encontrado = None
-
-            def procurar_janela(hwnd, _):
-                nonlocal hwnd_encontrado
-
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
-
-                titulo = win32gui.GetWindowText(hwnd).strip()
-
-                if titulo == "Salvar Saída de Impressão como":
-                    hwnd_encontrado = hwnd
-
-            win32gui.EnumWindows(
-                procurar_janela,
-                None
-            )
-
-            if hwnd_encontrado:
-
-                print()
-                print("JANELA SALVAR IMPRESSÃO ENCONTRADA.")
-                print(f"Handle : {hwnd_encontrado}")
-                print(
-                    f"Título : "
-                    f"{win32gui.GetWindowText(hwnd_encontrado)}"
-                )
-
-                return True
-
-        except Exception as e:
-
-            print(
-                f"Erro ao verificar Salvar impressão: {e}"
-            )
-
-        time.sleep(.2)
-
-    print()
-    print(
-        "ERRO: janela Salvar impressão "
-        "não foi encontrada."
-    )
-
-    return False
-
-
-# ============================================================
-# PROCURA PRINT OU PRINT PREVIEW
+# SALVAMENTO DE FICHA
 # ============================================================
 def tratar_salvar_como():
     try:
@@ -950,6 +375,7 @@ def tratar_salvar_como():
         )
 
     input("Nenhuma janela encontrada para salvar")
+
 
 def tratar_externo_imprimir(janela):
     print("Iniciando salvamento pelo modo externo: IMPRIMIR")
@@ -1119,8 +545,7 @@ def tratar_interno_print():
 def verificar_modo():
     janela = aguardar_janela(
         TITULO_EXTERNO_PRINT, 
-        TITULO_EXTERNO_IMPRIMIR, 
-        time_limit=3
+        TITULO_EXTERNO_IMPRIMIR
     )
 
     if janela == None: 
@@ -1156,101 +581,8 @@ def tratar_saida_impressao():
 
 
 # ============================================================
-# AGUARDA PRINT APÓS PRINT PREVIEW
+# TRATAMENTO DO TEMPORARIO
 # ============================================================
-
-def aguardar_print_e_tab():
-
-    print()
-    print("Aguardando janela Print...")
-
-    limite = time.time() + 10
-
-    while time.time() < limite:
-
-        try:
-
-            encontrado = False
-
-            def procurar(hwnd, _):
-
-                nonlocal encontrado
-
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
-
-                titulo = win32gui.GetWindowText(hwnd).strip()
-
-                if titulo == "Print":
-                    encontrado = True
-
-            win32gui.EnumWindows(
-                procurar,
-                None
-            )
-
-            if encontrado:
-                print("JANELA PRINT ENCONTRADA.")
-
-                return avancar_print()
-
-        except Exception as e:
-
-            print(
-                f"Erro aguardando Print: {e}"
-            )
-
-        time.sleep(.2)
-
-    print(
-        "ERRO: Print não apareceu após o Print Preview."
-    )
-
-    return False
-
-
-def clicar_print_preview():
-    print()
-    print("Procurando controle 'Print Preview'...")
-
-    try:
-        controle = Desktop(backend="win32").window(
-            class_name="folha7c000000",
-            title="Print Preview"
-        )
-
-        if not controle.exists(timeout=3):
-            print("ERRO: Controle 'Print Preview' não encontrado.")
-            return False
-
-        rect = controle.rectangle()
-
-        x = (rect.left + rect.right) // 2
-        y = (rect.top + rect.bottom) // 2
-
-        print("CONTROLE PRINT PREVIEW ENCONTRADO.")
-        print(f"Classe : {controle.class_name()}")
-        print(f"Rect   : {rect
-        }")
-        print(f"Clicando em X={x}, Y={y}...")
-
-        # Garante que a janela esteja ativa
-        controle.set_focus()
-
-        time.sleep(0.2)
-
-        # Clique físico do mouse
-        pyautogui.click(x, y)
-
-        print("Clique enviado.")
-
-        return True
-
-    except Exception as e:
-        print(f"ERRO ao clicar no Print Preview: {e}")
-        return False
-
-
 def deletar_temporario():
     caminho_temporario = PASTA_DOWNLOADS / NOME_TEMPORARIO
 
@@ -2181,6 +1513,12 @@ def executar(dados):
     print("=" * 80)
     print("PROCESSAMENTO CONCLUÍDO")
     print("=" * 80)
+
+    print()
+    print("Fechando JMS")
+    print()
+
+    fechar_jms_aberto()
 
     return True, ""
 
