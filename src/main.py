@@ -84,6 +84,9 @@ TITULO_JANELA_EL = (
 TITULO_INICIAL = "Form1"
 TITULO_JMS = "Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 TITULO_INTERNO = "Form1"
+TITULO_INTERNO_IMPRESSAO = "Report Designer - fichafin.frx"
+TITULO_EXTERNO_IMPRESSAO = "Imprimir"
+TITULO_IMPRESSAO = "Salvar Saída de Impressão como"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
 PASTA_SERVIDORES = Path(
@@ -157,7 +160,10 @@ def login():
     return True
 
 def abrir_janela_interna():
-    janela = aguardar_janela(TITULO_JMS)
+    janela = aguardar_janela(TITULO_JMS, time_limit=3)
+    if janela == None: # passa pela janela de aviso com mesmo nome: Form1
+        pyautogui.press("enter")
+        janela = aguardar_janela(TITULO_JMS, time_limit=10)
     janela.set_focus()
     
     pyautogui.hotkey("alt")
@@ -196,7 +202,7 @@ def fechar_jms_aberto():
 
     print("[INFO] Verificando se a folha já está aberta...")
 
-    janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS)
+    janela = aguardar_janela(TITULO_INICIAL, TITULO_JMS, time_limit=.5)
 
     if janela is None:
         print("[INFO] Nenhuma instância anterior encontrada.")
@@ -942,9 +948,9 @@ def tratar_saida_impressao():
 
         if not print_clicado:
 
-            hwnd_print = verificar_print()
+            janela = aguardar_janela(TITULO_EXTERNO_IMPRESSAO, time_limit=3)
 
-            if hwnd_print:
+            if janela != None:
 
                 print()
                 print("PRINT DETECTADO.")
@@ -952,15 +958,7 @@ def tratar_saida_impressao():
 
                 try:
 
-                    desktop = Desktop(
-                        backend="win32"
-                    )
-
-                    janela_print = desktop.window(
-                        handle=hwnd_print
-                    )
-
-                    botao_ok = janela_print.child_window(
+                    botao_ok = janela.child_window(
                         title="OK",
                         class_name="Button"
                     )
@@ -1034,17 +1032,10 @@ def tratar_saida_impressao():
 
         try:
 
-            janela_salvar = win32gui.FindWindow(
-                None,
-                "Salvar Saída de Impressão como"
-            )
+            janela = aguardar_janela(TITULO_IMPRESSAO)
 
-            if janela_salvar:
-
-                print()
-                print(
-                    "JANELA DE SALVAMENTO ENCONTRADA."
-                )
+            if janela!= None:
+                janela.set_focus()
 
                 return salvar_temporario()
 
@@ -1247,33 +1238,12 @@ def deletar_temporario():
 
 
 def salvar_temporario():
-    desktop = Desktop(backend="win32")
 
     if not deletar_temporario():
         return False
 
-    print("Aguardando janela para salvar PDF...")
-
-    janela = None
-
-    while janela is None:
-        for item in desktop.windows():
-            try:
-                if (
-                    item.is_visible()
-                    and item.class_name() == "#32770"
-                    and item.window_text() == "Salvar Saída de Impressão como"
-                ):
-                    janela = item
-                    break
-            except Exception:
-                pass
-
-        if janela is None:
-            time.sleep(0.2)
-
-    print("Janela de salvamento encontrada.")
-    print("Título:", janela.window_text())
+    janela = aguardar_janela(TITULO_IMPRESSAO)
+    janela.set_focus()
 
     caminho_arquivo = PASTA_DOWNLOADS / NOME_TEMPORARIO
 
@@ -2085,7 +2055,7 @@ def executar(dados):
     for matricula, anos in dados:
         print(f"Matrícula: {matricula} | Anos: {anos[0]} até {anos[-1]}")
 
-    # ---------------------------------------------------------- impressora
+    # --------------------------- impressora ------------------------------- 
     impressora = win32print.GetDefaultPrinter()
 
     if impressora.strip().lower() == "microsoft print to pdf":
@@ -2101,19 +2071,19 @@ def executar(dados):
 
         time.sleep(1)
 
-    # --------------------------------------------------------------- login
+    # ------------------------------ login -------------------------------- 
     if not login():
         return False, "Login no Folha não concluído."
 
     if not abrir_janela_interna():
         return False, "Abrir janela interna não concluído."
 
+    # ------------------------ ciclo de matrículas ------------------------ 
+
     # identifica a janela interna
     if not verificar_janela_interna(TITULO_INTERNO, TITULO_JMS):
         return False, "Janela interna não identificada"
-    input()
-
-    # ------------------------------------------------- ciclo de matrículas
+    
     for indice_matricula, (matricula, anos) in enumerate(dados, start=1):
 
         print()
@@ -2133,6 +2103,8 @@ def executar(dados):
             print(f"Ano: {ano}")
 
             gerarFicha(matricula, ano)
+
+            input()
 
             if not tratar_saida_impressao():
                 return False, (
