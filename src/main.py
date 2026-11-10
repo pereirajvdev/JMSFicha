@@ -356,25 +356,6 @@ def gerarFicha(matricula, ano):
 # ============================================================
 # SALVAMENTO DE FICHA
 # ============================================================
-def tratar_salvar_como():
-    try:
-
-        janela = aguardar_janela(TITULO_IMPRESSAO)
-
-        if janela!= None:
-            janela.set_focus()
-
-            return salvar_temporario()
-
-        input("Deveria ter aberto a salvar como ? ")
-    except Exception as e:
-
-        print(
-            "Erro procurando janela "
-            f"de salvamento: {e}"
-        )
-
-    input("Nenhuma janela encontrada para salvar")
 
 
 def tratar_externo_imprimir(janela):
@@ -382,8 +363,10 @@ def tratar_externo_imprimir(janela):
 
     procurar_controle(janela, "&Sim").click()
 
-    tratar_salvar_como()
-
+    if not salvar_temporario():
+        input("Erro no salvamento")
+    else:
+        print("Saida 2")
     tratar_interno_print()
     input()
 
@@ -486,7 +469,10 @@ def tratar_externo_print(janela):
 
     procurar_controle(janela, "OK").click()
 
-    tratar_salvar_como()
+    if not salvar_temporario():
+        input("Erro no salvamento")
+    else:
+        print("Saida 3")
 
 def tratar_interno_print():
     print("Iniciando salvamento pelo modo interno: REPORT DESIGN")
@@ -533,7 +519,10 @@ def tratar_interno_print():
 
             time.sleep(0.5)
 
-            tratar_salvar_como()
+            if not salvar_temporario():
+                input("Erro no salvamento")
+            else:
+                print("Saida 1")
 
     except Exception as e:
 
@@ -555,6 +544,8 @@ def verificar_modo():
     if janela.window_text() == TITULO_EXTERNO_PRINT: 
         return "externo_print", janela
 
+    return None, None
+
 def tratar_saida_impressao():
 
     print()
@@ -574,7 +565,7 @@ def tratar_saida_impressao():
     if modo == "interno_print":
         tratar_interno_print()
 
-    else:
+    if modo == None:
         input("Nenhum modo foi selecionado")
 
     return True
@@ -1542,11 +1533,6 @@ def main():
         metavar=("MATRICULA", "PERIODO"),
         help="Matrícula e intervalo de anos. Ex.: --mat 1234 2000-2005"
     )
-
-    #tratar_saida_impressao()
-    #tratar_salvar_como()
-    #tratar_interno_print()
-    #input()
 
     adicionar_argumentos(parser)
 
