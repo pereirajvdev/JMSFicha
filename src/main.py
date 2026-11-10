@@ -85,8 +85,11 @@ TITULO_INICIAL = "Form1"
 TITULO_JMS = "Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 TITULO_INTERNO = "Form1"
 TITULO_INTERNO_IMPRESSAO = "Report Designer - fichafin.frx"
-TITULO_EXTERNO_IMPRESSAO = "Imprimir"
+TITULO_EXTERNO_IMPRIMIR = "Imprimir"
+TITULO_EXTERNO_PRINT = "Print"
 TITULO_IMPRESSAO = "Salvar Saída de Impressão como"
+TITULO_REPORT = "Report Designer - fichafin.frx - Page 1 - Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
+TITULO_REPORT = "Report Designer - fichafin.frx - Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
 PASTA_SERVIDORES = Path(
@@ -928,6 +931,204 @@ def verificar_salvar_impressao():
 # ============================================================
 # PROCURA PRINT OU PRINT PREVIEW
 # ============================================================
+def tratar_salvar_como():
+    try:
+
+        janela = aguardar_janela(TITULO_IMPRESSAO)
+
+        if janela!= None:
+            janela.set_focus()
+
+            return salvar_temporario()
+
+        input("Deveria ter aberto a salvar como ? ")
+    except Exception as e:
+
+        print(
+            "Erro procurando janela "
+            f"de salvamento: {e}"
+        )
+
+    input("Nenhuma janela encontrada para salvar")
+
+def tratar_externo_imprimir(janela):
+    print("Iniciando salvamento pelo modo externo: IMPRIMIR")
+
+    procurar_controle(janela, "&Sim").click()
+
+    tratar_salvar_como()
+
+    tratar_interno_print()
+    input()
+
+    janela.set_focus()
+    botao_ok = janela.child_window(
+        title="&Sim",
+        class_name="Button"
+    )
+    print(f"botao ok: {botao_ok}")
+    botao_ok.set_focus()
+    botao_ok.click()
+    
+    input("falho na janela imprimir")
+    
+    """
+    print("Iniciando salvamento pelo modo externo: IMPRIMIR")
+    
+    try:
+        botao_ok = janela.child_window(
+            title="OK",
+            class_name="Button"
+        )
+
+        if not botao_ok.exists(timeout=1):
+
+            print(
+                "ERRO: botão OK não encontrado."
+            )
+
+            return False
+
+        rect = botao_ok.rectangle()
+
+        x = (
+            rect.left +
+            rect.right
+        ) // 2
+
+        y = (
+            rect.top +
+            rect.bottom
+        ) // 2
+
+        print()
+        print("BOTÃO OK ENCONTRADO")
+        print("-" * 80)
+        print(f"X: {x}")
+        print(f"Y: {y}")
+        print("-" * 80)
+
+        print(
+            "Movendo mouse até o botão OK..."
+        )
+
+        pyautogui.moveTo(
+            x,
+            y,
+            duration=0.05
+        )
+
+        time.sleep(0.1)
+
+        print(
+            "CLICANDO NO BOTÃO OK..."
+        )
+
+        pyautogui.click(
+            x,
+            y
+        )
+        input("OKKKKKK")
+
+        print(
+            "OK CLICADO."
+        )
+
+    except Exception as e:
+
+        print(
+            "Erro ao clicar no OK "
+            f"da janela Print: {e}"
+        )
+
+        return False
+    """
+
+
+def procurar_controle(janela, titulo):
+    controles = janela.descendants()
+
+    for i, controle in enumerate(controles):
+        try:
+            if controle.window_text() == titulo:
+                return controle
+        except Exception as e:
+            print(f"[{i}] Erro: {e}")
+
+
+def tratar_externo_print(janela):
+
+    procurar_controle(janela, "OK").click()
+
+    tratar_salvar_como()
+
+def tratar_interno_print():
+    print("Iniciando salvamento pelo modo interno: REPORT DESIGN")
+    
+    try:
+
+        hwnd_report = None
+
+        def procurar_report(hwnd, _):
+
+            nonlocal hwnd_report
+
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+
+            titulo = (
+                win32gui.GetWindowText(hwnd)
+            )
+
+            if "Report Designer" in titulo:
+
+                hwnd_report = hwnd
+
+        win32gui.EnumWindows(
+            procurar_report,
+            None
+        )
+
+        if hwnd_report:
+
+            print()
+            print(
+                "REPORT DESIGNER ENCONTRADO."
+            )
+
+            janela = aguardar_janela(TITULO_REPORT)
+            janela.set_focus()
+
+            pyautogui.doubleClick(
+                373,
+                325,
+                interval=0.1
+            )
+
+            time.sleep(0.5)
+
+            tratar_salvar_como()
+
+    except Exception as e:
+
+        print(
+            "Erro procurando Report Designer: "
+            f"{e}"
+        )
+
+def verificar_modo():
+    janela = aguardar_janela(
+        TITULO_EXTERNO_PRINT, 
+        TITULO_EXTERNO_IMPRIMIR, 
+        time_limit=3
+    )
+
+    if janela == None: 
+        return "interno_print", janela
+    if janela.window_text() == TITULO_EXTERNO_IMPRIMIR: 
+        return "externo_imprimir", janela
+    if janela.window_text() == TITULO_EXTERNO_PRINT: 
+        return "externo_print", janela
 
 def tratar_saida_impressao():
 
@@ -935,182 +1136,23 @@ def tratar_saida_impressao():
     print("=" * 80)
     print("AGUARDANDO SAÍDA DE IMPRESSÃO")
     print("=" * 80)
+    
+    modo, janela = verificar_modo()
 
-    limite = time.time() + 15
+    if janela != None:
+        janela.set_focus()
 
-    print_clicado = False
+    if modo == "externo_imprimir":
+        tratar_externo_imprimir(janela)
+    if modo == "externo_print":
+        tratar_externo_print(janela)
+    if modo == "interno_print":
+        tratar_interno_print()
 
-    while time.time() < limite:
+    else:
+        input("Nenhum modo foi selecionado")
 
-        # ============================================================
-        # 1. PRINT
-        # ============================================================
-
-        if not print_clicado:
-
-            janela = aguardar_janela(TITULO_EXTERNO_IMPRESSAO, time_limit=3)
-
-            if janela != None:
-
-                print()
-                print("PRINT DETECTADO.")
-                print("Localizando botão OK...")
-
-                try:
-
-                    botao_ok = janela.child_window(
-                        title="OK",
-                        class_name="Button"
-                    )
-
-                    if not botao_ok.exists(timeout=1):
-
-                        print(
-                            "ERRO: botão OK não encontrado."
-                        )
-
-                        return False
-
-                    rect = botao_ok.rectangle()
-
-                    x = (
-                        rect.left +
-                        rect.right
-                    ) // 2
-
-                    y = (
-                        rect.top +
-                        rect.bottom
-                    ) // 2
-
-                    print()
-                    print("BOTÃO OK ENCONTRADO")
-                    print("-" * 80)
-                    print(f"X: {x}")
-                    print(f"Y: {y}")
-                    print("-" * 80)
-
-                    print(
-                        "Movendo mouse até o botão OK..."
-                    )
-
-                    pyautogui.moveTo(
-                        x,
-                        y,
-                        duration=0.05
-                    )
-
-                    time.sleep(0.1)
-
-                    print(
-                        "CLICANDO NO BOTÃO OK..."
-                    )
-
-                    pyautogui.click(
-                        x,
-                        y
-                    )
-
-                    print(
-                        "OK CLICADO."
-                    )
-
-                    print_clicado = True
-
-                except Exception as e:
-
-                    print(
-                        "Erro ao clicar no OK "
-                        f"da janela Print: {e}"
-                    )
-
-                    return False
-
-        # ============================================================
-        # 2. SALVAR SAÍDA DE IMPRESSÃO COMO
-        # ============================================================
-
-        try:
-
-            janela = aguardar_janela(TITULO_IMPRESSAO)
-
-            if janela!= None:
-                janela.set_focus()
-
-                return salvar_temporario()
-
-        except Exception as e:
-
-            print(
-                "Erro procurando janela "
-                f"de salvamento: {e}"
-            )
-
-        # ============================================================
-        # 3. REPORT DESIGNER
-        # ============================================================
-
-        try:
-
-            hwnd_report = None
-
-            def procurar_report(hwnd, _):
-
-                nonlocal hwnd_report
-
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
-
-                titulo = (
-                    win32gui.GetWindowText(hwnd)
-                )
-
-                if "Report Designer" in titulo:
-
-                    hwnd_report = hwnd
-
-            win32gui.EnumWindows(
-                procurar_report,
-                None
-            )
-
-            if hwnd_report:
-
-                print()
-                print(
-                    "REPORT DESIGNER ENCONTRADO."
-                )
-
-                pyautogui.doubleClick(
-                    373,
-                    325,
-                    interval=0.1
-                )
-
-                time.sleep(0.5)
-
-        except Exception as e:
-
-            print(
-                "Erro procurando Report Designer: "
-                f"{e}"
-            )
-
-        # ============================================================
-        # PEQUENA PAUSA
-        # ============================================================
-
-        time.sleep(0.05)
-
-    print()
-    print("=" * 80)
-    print(
-        "ERRO: nenhuma janela de impressão "
-        "foi encontrada."
-    )
-    print("=" * 80)
-
-    return False
+    return True
 
 
 # ============================================================
@@ -1188,7 +1230,8 @@ def clicar_print_preview():
 
         print("CONTROLE PRINT PREVIEW ENCONTRADO.")
         print(f"Classe : {controle.class_name()}")
-        print(f"Rect   : {rect}")
+        print(f"Rect   : {rect
+        }")
         print(f"Clicando em X={x}, Y={y}...")
 
         # Garante que a janela esteja ativa
@@ -2104,8 +2147,6 @@ def executar(dados):
 
             gerarFicha(matricula, ano)
 
-            input()
-
             if not tratar_saida_impressao():
                 return False, (
                     f"Erro ao gerar a saída de impressão "
@@ -2163,6 +2204,11 @@ def main():
         metavar=("MATRICULA", "PERIODO"),
         help="Matrícula e intervalo de anos. Ex.: --mat 1234 2000-2005"
     )
+
+    #tratar_saida_impressao()
+    #tratar_salvar_como()
+    #tratar_interno_print()
+    #input()
 
     adicionar_argumentos(parser)
 
