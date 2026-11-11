@@ -88,7 +88,7 @@ TITULO_INTERNO_IMPRESSAO = "Report Designer - fichafin.frx"
 TITULO_EXTERNO_IMPRIMIR = "Imprimir"
 TITULO_EXTERNO_PRINT = "Print"
 TITULO_IMPRESSAO = "Salvar Saída de Impressão como"
-TITULO_REPORT = "Report Designer - fichafin.frx - Page 1 - Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
+TITULO_REPORT_VARIACAO = "Report Designer - fichafin.frx - Page 1 - Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 TITULO_REPORT = "Report Designer - fichafin.frx - Folha - PREFEITURA MUNICIPAL DE TRES CORACOES - Abril de 2009"
 
 PASTA_DOWNLOADS = Path.home() / "Downloads"
@@ -356,7 +356,20 @@ def gerarFicha(matricula, ano):
 # ============================================================
 # SALVAMENTO DE FICHA
 # ============================================================
+def procurar_controle(janela, titulo=None, classe=None):
+    controles = janela.descendants()
 
+    for i, controle in enumerate(controles):
+        try:
+            if titulo is not None and controle.window_text() == titulo:
+                return controle
+        
+            if classe is not None and controle.class_name() == classe:
+                return controle
+            
+        except Exception as e:
+            print(f"[{i}] Erro: {e}")
+            
 
 def tratar_externo_imprimir(janela):
     print("Iniciando salvamento pelo modo externo: IMPRIMIR")
@@ -365,114 +378,28 @@ def tratar_externo_imprimir(janela):
 
     if not salvar_temporario():
         input("Erro no salvamento")
-    else:
-        print("Saida 2")
+
     tratar_interno_print()
-    input()
 
     janela.set_focus()
     botao_ok = janela.child_window(
         title="&Sim",
         class_name="Button"
     )
+
     print(f"botao ok: {botao_ok}")
     botao_ok.set_focus()
     botao_ok.click()
-    
-    input("falho na janela imprimir")
-    
-    """
-    print("Iniciando salvamento pelo modo externo: IMPRIMIR")
-    
-    try:
-        botao_ok = janela.child_window(
-            title="OK",
-            class_name="Button"
-        )
-
-        if not botao_ok.exists(timeout=1):
-
-            print(
-                "ERRO: botão OK não encontrado."
-            )
-
-            return False
-
-        rect = botao_ok.rectangle()
-
-        x = (
-            rect.left +
-            rect.right
-        ) // 2
-
-        y = (
-            rect.top +
-            rect.bottom
-        ) // 2
-
-        print()
-        print("BOTÃO OK ENCONTRADO")
-        print("-" * 80)
-        print(f"X: {x}")
-        print(f"Y: {y}")
-        print("-" * 80)
-
-        print(
-            "Movendo mouse até o botão OK..."
-        )
-
-        pyautogui.moveTo(
-            x,
-            y,
-            duration=0.05
-        )
-
-        time.sleep(0.1)
-
-        print(
-            "CLICANDO NO BOTÃO OK..."
-        )
-
-        pyautogui.click(
-            x,
-            y
-        )
-        input("OKKKKKK")
-
-        print(
-            "OK CLICADO."
-        )
-
-    except Exception as e:
-
-        print(
-            "Erro ao clicar no OK "
-            f"da janela Print: {e}"
-        )
-
-        return False
-    """
-
-
-def procurar_controle(janela, titulo):
-    controles = janela.descendants()
-
-    for i, controle in enumerate(controles):
-        try:
-            if controle.window_text() == titulo:
-                return controle
-        except Exception as e:
-            print(f"[{i}] Erro: {e}")
 
 
 def tratar_externo_print(janela):
+    print("Iniciando salvamento pelo modo externo: PRINT")
 
     procurar_controle(janela, "OK").click()
 
     if not salvar_temporario():
         input("Erro no salvamento")
-    else:
-        print("Saida 3")
+
 
 def tratar_interno_print():
     print("Iniciando salvamento pelo modo interno: REPORT DESIGN")
@@ -521,8 +448,6 @@ def tratar_interno_print():
 
             if not salvar_temporario():
                 input("Erro no salvamento")
-            else:
-                print("Saida 1")
 
     except Exception as e:
 
@@ -530,6 +455,7 @@ def tratar_interno_print():
             "Erro procurando Report Designer: "
             f"{e}"
         )
+
 
 def verificar_modo():
     janela = aguardar_janela(
@@ -545,6 +471,7 @@ def verificar_modo():
         return "externo_print", janela
 
     return None, None
+
 
 def tratar_saida_impressao():
 
@@ -603,6 +530,20 @@ def deletar_temporario():
     return True
 
 
+def colar_texto(controle, valor):
+    """
+    Foca o controle UMA vez, copia o valor e cola substituindo o conteúdo.
+    set_foreground=False evita que type_keys refaça set_focus a cada chamada
+    (por padrão o pywinauto chama set_focus dentro de cada type_keys).
+    """
+    controle.set_focus()
+
+    pyperclip.copy(str(valor))
+
+    controle.type_keys("^a", set_foreground=False)
+    controle.type_keys("^v", set_foreground=False)
+
+
 def salvar_temporario():
 
     if not deletar_temporario():
@@ -616,9 +557,7 @@ def salvar_temporario():
     print("Arquivo:", NOME_TEMPORARIO)
     print("Caminho:", caminho_arquivo)
 
-    # ============================================================
-    # CAMPO DO NOME DO ARQUIVO
-    # ============================================================
+    # OBTÉM CAMPO DO NOME DO ARQUIVO
 
     campo_nome = None
 
@@ -632,102 +571,27 @@ def salvar_temporario():
             if rect.width() > 500:
                 campo_nome = controle
                 break
-
         except Exception:
             pass
-
+        
     if campo_nome is None:
         print("Campo do nome do arquivo não encontrado.")
         return False
 
-    # ------------------------------------------------------------
-    # LIMPA O CAMPO ANTES DE ESCREVER
-    # ------------------------------------------------------------
+    # ESCREVE temporario.pdf
 
-    campo_nome.set_focus()
-    time.sleep(0.3)
-
-    campo_nome.click_input()
-    time.sleep(0.2)
-
-    campo_nome.select()
-    time.sleep(0.2)
-
-    # ------------------------------------------------------------
-    # ESCREVE COM INTERVALO ENTRE OS CARACTERES
-    # ------------------------------------------------------------
-
-    print("Preenchendo caminho do arquivo...")
-
-    campo_nome.type_keys(
-        str(caminho_arquivo),
-        with_spaces=True,
-        pause=0.001
-    )
+    colar_texto(campo_nome, caminho_arquivo)
 
     print("Nome do arquivo preenchido.")
 
-    time.sleep(0.5)
-
-    # ============================================================
-    # CONFIRMA CAMPO
-    # ============================================================
-
-    try:
-        texto_digitado = campo_nome.window_text()
-
-        print(
-            f"Texto atualmente no campo: {texto_digitado}"
-        )
-
-    except Exception:
-        pass
-
-    # ============================================================
     # BOTÃO SALVAR
-    # ============================================================
 
-    botao_salvar = None
-
-    for controle in janela.descendants():
-        try:
-            if (
-                controle.class_name() == "Button"
-                and controle.window_text() == "Sa&lvar"
-            ):
-                botao_salvar = controle
-                break
-
-        except Exception:
-            pass
-
-    if botao_salvar is None:
-        print("Botão Salvar não encontrado.")
-        return False
-
-    print()
-    print("BOTÃO SALVAR ENCONTRADO.")
-    print(f"Handle: {botao_salvar.handle}")
-
-    # ============================================================
-    # CLICA EM SALVAR
-    # ============================================================
-
-    print("Clicando em Salvar...")
-
-    try:
-        botao_salvar.click_input()
-    except Exception:
-        botao_salvar.click()
+    botao_salvar = procurar_controle(janela, "Button")
+    botao_salvar.click()
 
     print("Clique em Salvar realizado.")
-
-    # ============================================================
-    # CONFIRMA QUE O CLIQUE FOI PROCESSADO
-    # ============================================================
-
-    print("Confirmando fechamento da janela de salvamento...")
-
+    
+    input("E agora?")
     limite_confirmacao = time.time() + 5
 
     while time.time() < limite_confirmacao:
