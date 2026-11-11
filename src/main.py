@@ -369,6 +369,10 @@ def procurar_controle(janela, titulo=None, classe=None):
             
         except Exception as e:
             print(f"[{i}] Erro: {e}")
+
+    print(f"{titulo} não foi encontrado em {janela.window_text()}. ")
+
+    return 
             
 
 def tratar_externo_imprimir(janela):
@@ -586,40 +590,10 @@ def salvar_temporario():
 
     # BOTÃO SALVAR
 
-    botao_salvar = procurar_controle(janela, "Button")
+    botao_salvar = procurar_controle(janela, "Sa&lvar")
+    botao_salvar.set_focus()
     botao_salvar.click()
-
-    print("Clique em Salvar realizado.")
     
-    input("E agora?")
-    limite_confirmacao = time.time() + 5
-
-    while time.time() < limite_confirmacao:
-
-        try:
-            if not janela.exists():
-                print("Janela de salvamento fechada.")
-                print("Salvar confirmado.")
-                break
-
-        except Exception:
-            # Se o controle deixou de existir,
-            # também consideramos que a janela fechou.
-            print("Janela de salvamento fechada.")
-            print("Salvar confirmado.")
-            break
-
-        time.sleep(0.2)
-
-    else:
-        print()
-        print(
-            "ERRO: a janela de salvamento "
-            "não fechou após o clique."
-        )
-
-        return False
-
     # ============================================================
     # AGUARDAR PDF FICAR REALMENTE PRONTO
     # ============================================================
