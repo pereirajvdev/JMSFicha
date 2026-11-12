@@ -164,7 +164,7 @@ def abrir_jms():
         [str(EXE)],
         cwd=str(EXE.parent)
     )
-
+    
     return True
 
 
@@ -174,7 +174,10 @@ def abrir_janela_interna():
         pyautogui.press("enter")
         janela = aguardar_janela(TITULO_JMS, time_limit=10)
     janela.set_focus()
-    
+
+    reposicionar(janela, "left")
+    time.sleep(1)
+
     pyautogui.hotkey("alt")
     time.sleep(.02)
 
@@ -202,6 +205,42 @@ def abrir_janela_interna():
 
     pyautogui.press("enter")
     time.sleep(.02)
+
+    return True
+
+
+def reposicionar(janela, lado="right"):
+    """
+    Reposiciona a janela ocupando metade da área útil da tela.
+
+    lado:
+        "left"  -> metade esquerda
+        "right" -> metade direita
+    """
+
+    largura_tela, altura_tela = pyautogui.size()
+
+    metade = largura_tela // 2
+
+    if lado == "left":
+        x = 0
+    elif lado == "right":
+        x = metade
+    else:
+        raise ValueError("lado deve ser 'left' ou 'right'.")
+
+    # Restaura a janela caso esteja maximizada ou minimizada.
+    if janela.is_maximized() or janela.is_minimized():
+        janela.restore()
+
+    # Reposiciona e redimensiona.
+    janela.move_window(
+        x=x,
+        y=0,
+        width=metade,
+        height=altura_tela,
+        repaint=True
+    )
 
     return True
 
@@ -425,7 +464,13 @@ def tratar_externo_imprimir(janela):
 def tratar_externo_print(janela):
     print("Iniciando salvamento pelo modo externo: PRINT")
 
-    procurar_controle(janela, "OK").click()
+    ok_btn = procurar_controle(janela, "OK")
+
+    if ok_btn is None:
+        input("Botao de ok nao identificado. ")
+
+    janela.set_focus()
+    ok_btn.click()
 
     if not salvar_temporario():
         input("Erro no salvamento")
@@ -433,7 +478,8 @@ def tratar_externo_print(janela):
 
 def tratar_interno_print():
     print("Iniciando salvamento pelo modo interno: REPORT DESIGN")
-    
+
+    input("Continuar...")
     try:
 
         hwnd_report = None
@@ -490,7 +536,8 @@ def tratar_interno_print():
 def verificar_modo():
     janela = aguardar_janela(
         TITULO_EXTERNO_PRINT, 
-        TITULO_EXTERNO_IMPRIMIR
+        TITULO_EXTERNO_IMPRIMIR,
+        time_limit=7
     )
 
     if janela == None: 
@@ -511,9 +558,12 @@ def tratar_saida_impressao():
     print("=" * 80)
     
     modo, janela = verificar_modo()
-
+    
     if janela != None:
         janela.set_focus()
+        titulo = janela.window_text()
+        
+    #input(f"\nVerifique se está certo\nModo: {modo}\nJanela: {titulo}\n")
 
     if modo == "externo_imprimir":
         tratar_externo_imprimir(janela)
@@ -994,6 +1044,7 @@ def organizar_pdf_temporario():
 
         return False
 
+
 def avancar_para_proximo_ano():
     print()
     print("=" * 80)
@@ -1338,7 +1389,8 @@ def executar(dados):
             print("PDF ORGANIZADO COM SUCESSO.")
 
             if indice_ano < len(anos):
-                avancar_para_proximo_ano()
+                if not avancar_para_proximo_ano():
+                    input("Falhou no sistema de avançar ano. ")
             else:
                 print()
                 print("TODOS OS ANOS DA MATRÍCULA FORAM PROCESSADOS.")
