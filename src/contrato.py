@@ -91,7 +91,6 @@ class Retorno:
             "falhas": self.falhas,
             "erro": erro,
         }
-        self.caminho.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.caminho.with_name(self.caminho.name + ".tmp")
         tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, self.caminho)  # troca atômica: o painel nunca lê um arquivo pela metade
