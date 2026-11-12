@@ -123,7 +123,7 @@ def login():
         print(f"Caminho procurado: {EXE}")
         return False
 
-    fechar_jms_aberto()
+    fechar_jms()
 
     usuario, senha = CRED.read_text(
         encoding="utf-8"
@@ -200,7 +200,7 @@ def abrir_janela_interna():
     return True
 
 
-def fechar_jms_aberto():
+def fechar_jms():
     """Encerra o processo associado à janela principal, se estiver aberto."""
 
     print("[INFO] Verificando se a folha já está aberta...")
@@ -310,7 +310,7 @@ def definir_impressora_pdf():
 # ============================================================
 
 def gerarFicha(matricula, ano):
-
+    # INSERE DADOS NA JANELA DESENHADA, NAO EH POSSIVEL DAR controle.set_focus()
     time.sleep(1)
 
     pyautogui.write(
@@ -1259,22 +1259,6 @@ def executar(dados):
     for matricula, anos in dados:
         print(f"Matrícula: {matricula} | Anos: {anos[0]} até {anos[-1]}")
 
-    # --------------------------- impressora ------------------------------- 
-    impressora = win32print.GetDefaultPrinter()
-
-    if impressora.strip().lower() == "microsoft print to pdf":
-        print("Impressora padrão já é Microsoft Print to PDF.")
-    else:
-        definir_impressora_pdf()
-        impressora = win32print.GetDefaultPrinter()
-        print("IMPRESSORA PADRÃO:")
-        print(impressora)
-
-        if impressora.strip().lower() != "microsoft print to pdf":
-            print("ATENÇÃO: a impressora padrão não é Microsoft Print to PDF.")
-
-        time.sleep(1)
-
     # ------------------------------ login -------------------------------- 
     if not login():
         return False, "Login no Folha não concluído."
@@ -1347,7 +1331,7 @@ def executar(dados):
     print("Fechando JMS")
     print()
 
-    fechar_jms_aberto()
+    fechar_jms()
 
     return True, ""
 
@@ -1390,7 +1374,23 @@ def main():
         print("Nenhum registro encontrado.")
         RETORNO.gravar(False, "Nenhum registro encontrado.")
         return 1
+    
+    # --------------------------- impressora ------------------------------- 
+    impressora = win32print.GetDefaultPrinter()
 
+    if impressora.strip().lower() == "microsoft print to pdf":
+        print("Impressora padrão já é Microsoft Print to PDF.")
+    else:
+        definir_impressora_pdf()
+        impressora = win32print.GetDefaultPrinter()
+        print("IMPRESSORA PADRÃO:")
+        print(impressora)
+
+        if impressora.strip().lower() != "microsoft print to pdf":
+            print("ATENÇÃO: a impressora padrão não é Microsoft Print to PDF.")
+
+        time.sleep(1)
+    
     try:
         sucesso, erro = executar(dados)
     except Exception as exc:
