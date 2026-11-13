@@ -478,8 +478,7 @@ def tratar_externo_print(janela):
 
 def tratar_interno_print():
     print("Iniciando salvamento pelo modo interno: REPORT DESIGN")
-
-    input("Continuar...")
+    
     try:
 
         hwnd_report = None
@@ -1307,6 +1306,9 @@ def obter_dados(args, parser):
 
         if ano_inicial > ano_final:
             parser.error("O ano inicial não pode ser maior que o ano final.")
+        if ano_inicial < 2001:
+            parser.error("O ano inicial não pode ser menor que 2001.")
+                    
 
         return [(matricula, list(range(ano_inicial, ano_final + 1)))]
 
