@@ -11,6 +11,7 @@ import ctypes
 import re
 import shutil
 import subprocess
+import win32print
 import sys
 import time
 import traceback
@@ -23,7 +24,6 @@ from pathlib import Path
 import pyautogui
 import fitz
 import psutil
-import win32print
 
 from contrato import adicionar_argumentos, pasta_existente, registros_para_dados, Retorno
 
@@ -544,40 +544,6 @@ def ler_planilha(caminho):
 
 
 # ======================================================================
-# IMPRESSORA PDF
-# ======================================================================
-def definir_impressora_pdf():
-    """Executa o AutoFicha no modo padrão."""
-    script = r"C:\Users\Joao Castro\Documents\AutoFicha\src\main.py"
-
-    subprocess.Popen(
-        [sys.executable, script, "--padrao"],
-        cwd=r"C:\Users\Joao Castro\Documents\AutoFicha"
-    )
-
-
-def impressora_eh_pdf():
-    return win32print.GetDefaultPrinter().strip().lower() == "microsoft print to pdf"
-
-
-def impressora_pdf():
-    if impressora_eh_pdf():
-        print("Impressora padrão já é Microsoft Print to PDF.")
-    else:
-        definir_impressora_pdf()
-
-        if not impressora_eh_pdf():
-            print("ATENÇÃO: Definir impressora falhou. ")
-            print("ATENÇÃO: A impressora padrão não é Microsoft Print to PDF.")
-
-        # Comportamento original preservado: quando a impressora não era PDF
-        # na primeira verificação, o retorno é sempre False.
-        return False
-
-    return True
-
-
-# ======================================================================
 # GERAR FICHA
 # ======================================================================
 @cronometrar("gerar ficha (digitação)")
@@ -1088,6 +1054,49 @@ def preparar_proxima_matricula():
 
 
 # ======================================================================
+# IMPRESSORA PDF
+# ======================================================================
+
+def auto_ficha_padrao():
+    """Executa o AutoFicha no modo padrão e aguarda sua conclusão."""
+    script = r"C:\Users\Joao Castro\Documents\AutoFicha\src\main.py"
+
+    resultado = subprocess.run(
+        [sys.executable, script, "--padrao"],
+        cwd=r"C:\Users\Joao Castro\Documents\AutoFicha",
+        check=False
+    )
+
+    return resultado.returncode == 0
+
+
+def impressora_eh_pdf():
+    return (
+        win32print.GetDefaultPrinter()
+        .strip()
+        .lower() == "microsoft print to pdf"
+    )
+
+
+def definir_impressora():
+    if impressora_eh_pdf():
+        print("Impressora padrão já é Microsoft Print to PDF.")
+        return True
+
+    if not auto_ficha_padrao():
+        raise RuntimeError("Falha ao executar o AutoFicha no modo padrão.")
+
+    if not impressora_eh_pdf():
+        raise RuntimeError(
+            "O AutoFicha terminou, mas a impressora padrão "
+            "não é Microsoft Print to PDF."
+        )
+
+    print("Impressora padrão definida com sucesso.")
+    return True
+
+
+# ======================================================================
 # MAIN
 # ======================================================================
 def obter_dados(args, parser):
@@ -1264,6 +1273,7 @@ def main():
     except argparse.ArgumentError:
         pass  # já definido em contrato.adicionar_argumentos
 
+    
     args = parser.parse_args()  # entrada inválida: sai com código 2
 
     PERF_ATIVO = bool(getattr(args, "perf", False))
@@ -1284,7 +1294,7 @@ def main():
         return 1
 
     # --------------------------- impressora -------------------------------
-    if not impressora_pdf():
+    if not definir_impressora():
         input("Impressora não é a pdf")
 
     try:
